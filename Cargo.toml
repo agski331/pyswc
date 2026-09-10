@@ -1,0 +1,24 @@
+[package]
+name = "pyswc"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+# The name of the native library. This is the name which will be used in Python to import the
+# library (i.e. `import string_sum`). If you change this, you must also change the name of the
+# `#[pymodule]` in `src/lib.rs`.
+name = "pyswc"
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["num-bigint", "extension-module"] }
+anyhow = "1"
+
+swc_core = { version = "78.0.0", features = [
+    "common",
+    "ecma_ast",
+    "ecma_parser",
+    "ecma_codegen",
+    "ecma_visit",
+    "ecma_transforms",
+] }
+num-bigint = "0.4"
