@@ -1,8 +1,10 @@
 use pyo3::prelude::*;
-use swc_core::ecma::ast::{JSXElement, JSXEmptyExpr, JSXFragment, JSXMemberExpr, JSXNamespacedName};
+use swc_core::ecma::ast::{
+    JSXElement, JSXEmptyExpr, JSXFragment, JSXMemberExpr, JSXNamespacedName,
+};
 
 use crate::{
-    conversions::{conv_boxed_expr, conv_bool, conv_identname, conv_span, conv_typeparams},
+    conversions::{conv_bool, conv_boxed_expr, conv_identname, conv_span, conv_typeparams},
     macros::ast_node_variant,
     pyexpr::PyExpr,
     pyident::{PyIdent, PyIdentName},
@@ -12,11 +14,11 @@ use crate::{
 };
 
 #[pyclass]
-pub struct PyJSXObject{
+pub struct PyJSXObject {
     #[pyo3(get)]
     pub jsx_member_expr: Option<Py<PyJSXMemberExpr>>,
     #[pyo3(get)]
-    pub ident: Option<PyIdent>
+    pub ident: Option<PyIdent>,
 }
 
 ast_node_variant!(PyExpr, PyJSXMemberExpr, JSXMemberExpr, {
@@ -36,210 +38,264 @@ ast_node_variant!(PyExpr, PyJSXEmptyExpr, JSXEmptyExpr, {
 });
 
 #[pyclass]
-pub struct PyJSXExpr{
+pub struct PyJSXExpr {
     #[pyo3(get)]
     pub empty_span: Option<PySpan>,
     #[pyo3(get)]
-    pub expr: Option<Py<PyExpr>>
+    pub expr: Option<Py<PyExpr>>,
 }
 
 #[pyclass]
-pub struct PyJSXExprContainer{
+pub struct PyJSXExprContainer {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub expr: Py<PyJSXExpr>
+    pub expr: Py<PyJSXExpr>,
 }
 
 impl PyJSXExprContainer {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXExprContainer) -> PyResult<Self> {
         Ok(PyJSXExprContainer {
             span: conv_span(py, node.span)?,
-            expr: crate::conversions::conv_jsx_expr(py, node.expr)?
+            expr: crate::conversions::conv_jsx_expr(py, node.expr)?,
         })
     }
 }
 
 #[pyclass]
-pub struct PyJSXSpreadChild{
+pub struct PyJSXSpreadChild {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub expr: Py<PyExpr>
+    pub expr: Py<PyExpr>,
 }
 
 impl PyJSXSpreadChild {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXSpreadChild) -> PyResult<Self> {
         Ok(PyJSXSpreadChild {
             span: conv_span(py, node.span)?,
-            expr: conv_boxed_expr(py, node.expr)?
+            expr: conv_boxed_expr(py, node.expr)?,
         })
     }
 }
 
 #[pyclass]
-pub struct PyJSXElementName{
+pub struct PyJSXElementName {
     #[pyo3(get)]
     pub ident: Option<PyIdent>,
     #[pyo3(get)]
     pub jsx_member_expr: Option<Py<PyJSXMemberExprData>>,
     #[pyo3(get)]
-    pub jsx_namespaced_name: Option<PyJSXNamespacedNameData>
+    pub jsx_namespaced_name: Option<PyJSXNamespacedNameData>,
 }
 
 #[pyclass]
-pub struct PyJSXMemberExprData{
+pub struct PyJSXMemberExprData {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub obj: Py<PyJSXObject>,
     #[pyo3(get)]
-    pub prop: PyIdentName
+    pub prop: PyIdentName,
 }
 
 #[derive(Clone)]
 #[pyclass]
-pub struct PyJSXNamespacedNameData{
+pub struct PyJSXNamespacedNameData {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub ns: PyIdentName,
     #[pyo3(get)]
-    pub name: PyIdentName
+    pub name: PyIdentName,
 }
 
 #[pyclass(subclass)]
-pub struct PyJSXAttrOrSpread{
-
-}
+pub struct PyJSXAttrOrSpread {}
 
 #[pyclass(extends=PyJSXAttrOrSpread)]
-pub struct PyJSXAttrOrSpreadAttr{
+pub struct PyJSXAttrOrSpreadAttr {
     #[pyo3(get)]
-    pub attr: Py<PyJSXAttr>
+    pub attr: Py<PyJSXAttr>,
 }
 
 impl PyJSXAttrOrSpreadAttr {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXAttr) -> PyResult<Self> {
-        Ok(PyJSXAttrOrSpreadAttr { attr: Py::new(py, PyJSXAttr::build(py, node)?)? })
+        Ok(PyJSXAttrOrSpreadAttr {
+            attr: Py::new(py, PyJSXAttr::build(py, node)?)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXAttrOrSpread)]
-pub struct PyJSXAttrOrSpreadSpread{
+pub struct PyJSXAttrOrSpreadSpread {
     #[pyo3(get)]
-    pub spread: Py<PySpreadElement>
+    pub spread: Py<PySpreadElement>,
 }
 
 impl PyJSXAttrOrSpreadSpread {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::SpreadElement) -> PyResult<Self> {
-        let base = PyPropOrSpread { };
+        let base = PyPropOrSpread {};
         let sub = PySpreadElement::build(py, node)?;
-        Ok(PyJSXAttrOrSpreadSpread { spread: Py::new(py, (sub, base))? })
+        Ok(PyJSXAttrOrSpreadSpread {
+            spread: Py::new(py, (sub, base))?,
+        })
     }
 }
 
-pub fn conv_jsx_attr_or_spread(py: Python<'_>, node: swc_core::ecma::ast::JSXAttrOrSpread) -> PyResult<Py<PyJSXAttrOrSpread>>{
-    let base = PyJSXAttrOrSpread { };
+pub fn conv_jsx_attr_or_spread(
+    py: Python<'_>,
+    node: swc_core::ecma::ast::JSXAttrOrSpread,
+) -> PyResult<Py<PyJSXAttrOrSpread>> {
+    let base = PyJSXAttrOrSpread {};
     Ok(match node {
-        swc_core::ecma::ast::JSXAttrOrSpread::JSXAttr(a) => Py::new(py, (PyJSXAttrOrSpreadAttr::build(py, a)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXAttrOrSpread::SpreadElement(s) => Py::new(py, (PyJSXAttrOrSpreadSpread::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
+        swc_core::ecma::ast::JSXAttrOrSpread::JSXAttr(a) => {
+            Py::new(py, (PyJSXAttrOrSpreadAttr::build(py, a)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXAttrOrSpread::SpreadElement(s) => {
+            Py::new(py, (PyJSXAttrOrSpreadSpread::build(py, s)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
     })
 }
 
-pub fn conv_jsx_attr_or_spreads(py: Python<'_>, nodes: Vec<swc_core::ecma::ast::JSXAttrOrSpread>) -> PyResult<Vec<Py<PyJSXAttrOrSpread>>>{
-    nodes.into_iter().map(|n| conv_jsx_attr_or_spread(py, n)).collect()
+pub fn conv_jsx_attr_or_spreads(
+    py: Python<'_>,
+    nodes: Vec<swc_core::ecma::ast::JSXAttrOrSpread>,
+) -> PyResult<Vec<Py<PyJSXAttrOrSpread>>> {
+    nodes
+        .into_iter()
+        .map(|n| conv_jsx_attr_or_spread(py, n))
+        .collect()
 }
 
 #[derive(Clone)]
 #[pyclass]
-pub struct PyJSXAttrName{
+pub struct PyJSXAttrName {
     #[pyo3(get)]
     pub ident: Option<PyIdentName>,
     #[pyo3(get)]
-    pub jsx_namespaced_name: Option<PyJSXNamespacedNameData>
+    pub jsx_namespaced_name: Option<PyJSXNamespacedNameData>,
 }
 
 #[pyclass(subclass)]
-pub struct PyJSXAttrValue{
-
-}
+pub struct PyJSXAttrValue {}
 
 #[pyclass(extends=PyJSXAttrValue)]
-pub struct PyJSXAttrValueStr{
+pub struct PyJSXAttrValueStr {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub value: String
+    pub value: String,
 }
 
 impl PyJSXAttrValueStr {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::Str) -> PyResult<Self> {
-        Ok(PyJSXAttrValueStr { span: conv_span(py, node.span)?, value: crate::conversions::conv_str(py, node)? })
+        Ok(PyJSXAttrValueStr {
+            span: conv_span(py, node.span)?,
+            value: crate::conversions::conv_str(py, node)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXAttrValue)]
-pub struct PyJSXAttrValueExprContainer{
+pub struct PyJSXAttrValueExprContainer {
     #[pyo3(get)]
-    pub container: Py<PyJSXExprContainer>
+    pub container: Py<PyJSXExprContainer>,
 }
 
 impl PyJSXAttrValueExprContainer {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXExprContainer) -> PyResult<Self> {
-        Ok(PyJSXAttrValueExprContainer { container: Py::new(py, PyJSXExprContainer::build(py, node)?)? })
+        Ok(PyJSXAttrValueExprContainer {
+            container: Py::new(py, PyJSXExprContainer::build(py, node)?)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXAttrValue)]
-pub struct PyJSXAttrValueElement{
+pub struct PyJSXAttrValueElement {
     #[pyo3(get)]
-    pub element: Py<PyJSXElement>
+    pub element: Py<PyJSXElement>,
 }
 
 impl PyJSXAttrValueElement {
     pub fn build(py: Python<'_>, node: Box<swc_core::ecma::ast::JSXElement>) -> PyResult<Self> {
-        Ok(PyJSXAttrValueElement { element: crate::conversions::conv_jsx_element(py, *node)? })
+        Ok(PyJSXAttrValueElement {
+            element: crate::conversions::conv_jsx_element(py, *node)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXAttrValue)]
-pub struct PyJSXAttrValueFragment{
+pub struct PyJSXAttrValueFragment {
     #[pyo3(get)]
-    pub fragment: Py<PyJSXFragment>
+    pub fragment: Py<PyJSXFragment>,
 }
 
 impl PyJSXAttrValueFragment {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXFragment) -> PyResult<Self> {
-        Ok(PyJSXAttrValueFragment { fragment: crate::conversions::conv_jsx_fragment(py, node)? })
+        Ok(PyJSXAttrValueFragment {
+            fragment: crate::conversions::conv_jsx_fragment(py, node)?,
+        })
     }
 }
 
-pub fn conv_jsx_attr_value(py: Python<'_>, node: swc_core::ecma::ast::JSXAttrValue) -> PyResult<Py<PyJSXAttrValue>>{
-    let base = PyJSXAttrValue { };
+pub fn conv_jsx_attr_value(
+    py: Python<'_>,
+    node: swc_core::ecma::ast::JSXAttrValue,
+) -> PyResult<Py<PyJSXAttrValue>> {
+    let base = PyJSXAttrValue {};
     Ok(match node {
-        swc_core::ecma::ast::JSXAttrValue::Str(s) => Py::new(py, (PyJSXAttrValueStr::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXAttrValue::JSXExprContainer(c) => Py::new(py, (PyJSXAttrValueExprContainer::build(py, c)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXAttrValue::JSXElement(e) => Py::new(py, (PyJSXAttrValueElement::build(py, e)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXAttrValue::JSXFragment(f) => Py::new(py, (PyJSXAttrValueFragment::build(py, f)?, base))?.into_bound(py).into_super().unbind(),
+        swc_core::ecma::ast::JSXAttrValue::Str(s) => {
+            Py::new(py, (PyJSXAttrValueStr::build(py, s)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXAttrValue::JSXExprContainer(c) => {
+            Py::new(py, (PyJSXAttrValueExprContainer::build(py, c)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXAttrValue::JSXElement(e) => {
+            Py::new(py, (PyJSXAttrValueElement::build(py, e)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXAttrValue::JSXFragment(f) => {
+            Py::new(py, (PyJSXAttrValueFragment::build(py, f)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
     })
 }
 
-pub fn conv_option_jsx_attr_value(py: Python<'_>, node: Option<swc_core::ecma::ast::JSXAttrValue>) -> PyResult<Option<Py<PyJSXAttrValue>>>{
+pub fn conv_option_jsx_attr_value(
+    py: Python<'_>,
+    node: Option<swc_core::ecma::ast::JSXAttrValue>,
+) -> PyResult<Option<Py<PyJSXAttrValue>>> {
     match node {
         None => Ok(None),
-        Some(v) => Ok(Some(conv_jsx_attr_value(py, v)?))
+        Some(v) => Ok(Some(conv_jsx_attr_value(py, v)?)),
     }
 }
 
 #[pyclass]
-pub struct PyJSXAttr{
+pub struct PyJSXAttr {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub name: PyJSXAttrName,
     #[pyo3(get)]
-    pub value: Option<Py<PyJSXAttrValue>>
+    pub value: Option<Py<PyJSXAttrValue>>,
 }
 
 impl PyJSXAttr {
@@ -247,13 +303,13 @@ impl PyJSXAttr {
         Ok(PyJSXAttr {
             span: conv_span(py, node.span)?,
             name: crate::conversions::conv_jsx_attr_name(py, node.name)?,
-            value: conv_option_jsx_attr_value(py, node.value)?
+            value: conv_option_jsx_attr_value(py, node.value)?,
         })
     }
 }
 
 #[pyclass]
-pub struct PyJSXOpeningElement{
+pub struct PyJSXOpeningElement {
     #[pyo3(get)]
     pub name: Py<PyJSXElementName>,
     #[pyo3(get)]
@@ -263,7 +319,7 @@ pub struct PyJSXOpeningElement{
     #[pyo3(get)]
     pub self_closing: bool,
     #[pyo3(get)]
-    pub type_args: Option<Py<PyTsTypeParamInstantiation>>
+    pub type_args: Option<Py<PyTsTypeParamInstantiation>>,
 }
 
 impl PyJSXOpeningElement {
@@ -273,41 +329,39 @@ impl PyJSXOpeningElement {
             span: conv_span(py, node.span)?,
             attrs: conv_jsx_attr_or_spreads(py, node.attrs)?,
             self_closing: node.self_closing,
-            type_args: conv_typeparams(py, node.type_args)?
+            type_args: conv_typeparams(py, node.type_args)?,
         })
     }
 }
 
 #[pyclass]
-pub struct PyJSXClosingElement{
+pub struct PyJSXClosingElement {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub name: Py<PyJSXElementName>
+    pub name: Py<PyJSXElementName>,
 }
 
 impl PyJSXClosingElement {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXClosingElement) -> PyResult<Self> {
         Ok(PyJSXClosingElement {
             span: conv_span(py, node.span)?,
-            name: crate::conversions::conv_jsx_element_name(py, node.name)?
+            name: crate::conversions::conv_jsx_element_name(py, node.name)?,
         })
     }
 }
 
 #[pyclass(subclass)]
-pub struct PyJSXElementChild{
-
-}
+pub struct PyJSXElementChild {}
 
 #[pyclass(extends=PyJSXElementChild)]
-pub struct PyJSXElementChildText{
+pub struct PyJSXElementChildText {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub value: String,
     #[pyo3(get)]
-    pub raw: String
+    pub raw: String,
 }
 
 impl PyJSXElementChildText {
@@ -315,72 +369,114 @@ impl PyJSXElementChildText {
         Ok(PyJSXElementChildText {
             span: conv_span(py, node.span)?,
             value: node.value.to_atom_lossy().to_string(),
-            raw: node.raw.to_string()
+            raw: node.raw.to_string(),
         })
     }
 }
 
 #[pyclass(extends=PyJSXElementChild)]
-pub struct PyJSXElementChildExprContainer{
+pub struct PyJSXElementChildExprContainer {
     #[pyo3(get)]
-    pub container: Py<PyJSXExprContainer>
+    pub container: Py<PyJSXExprContainer>,
 }
 
 impl PyJSXElementChildExprContainer {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXExprContainer) -> PyResult<Self> {
-        Ok(PyJSXElementChildExprContainer { container: Py::new(py, PyJSXExprContainer::build(py, node)?)? })
+        Ok(PyJSXElementChildExprContainer {
+            container: Py::new(py, PyJSXExprContainer::build(py, node)?)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXElementChild)]
-pub struct PyJSXElementChildSpreadChild{
+pub struct PyJSXElementChildSpreadChild {
     #[pyo3(get)]
-    pub spread_child: Py<PyJSXSpreadChild>
+    pub spread_child: Py<PyJSXSpreadChild>,
 }
 
 impl PyJSXElementChildSpreadChild {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXSpreadChild) -> PyResult<Self> {
-        Ok(PyJSXElementChildSpreadChild { spread_child: Py::new(py, PyJSXSpreadChild::build(py, node)?)? })
+        Ok(PyJSXElementChildSpreadChild {
+            spread_child: Py::new(py, PyJSXSpreadChild::build(py, node)?)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXElementChild)]
-pub struct PyJSXElementChildElement{
+pub struct PyJSXElementChildElement {
     #[pyo3(get)]
-    pub element: Py<PyJSXElement>
+    pub element: Py<PyJSXElement>,
 }
 
 impl PyJSXElementChildElement {
     pub fn build(py: Python<'_>, node: Box<swc_core::ecma::ast::JSXElement>) -> PyResult<Self> {
-        Ok(PyJSXElementChildElement { element: crate::conversions::conv_jsx_element(py, *node)? })
+        Ok(PyJSXElementChildElement {
+            element: crate::conversions::conv_jsx_element(py, *node)?,
+        })
     }
 }
 
 #[pyclass(extends=PyJSXElementChild)]
-pub struct PyJSXElementChildFragment{
+pub struct PyJSXElementChildFragment {
     #[pyo3(get)]
-    pub fragment: Py<PyJSXFragment>
+    pub fragment: Py<PyJSXFragment>,
 }
 
 impl PyJSXElementChildFragment {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXFragment) -> PyResult<Self> {
-        Ok(PyJSXElementChildFragment { fragment: crate::conversions::conv_jsx_fragment(py, node)? })
+        Ok(PyJSXElementChildFragment {
+            fragment: crate::conversions::conv_jsx_fragment(py, node)?,
+        })
     }
 }
 
-pub fn conv_jsx_element_child(py: Python<'_>, node: swc_core::ecma::ast::JSXElementChild) -> PyResult<Py<PyJSXElementChild>>{
-    let base = PyJSXElementChild { };
+pub fn conv_jsx_element_child(
+    py: Python<'_>,
+    node: swc_core::ecma::ast::JSXElementChild,
+) -> PyResult<Py<PyJSXElementChild>> {
+    let base = PyJSXElementChild {};
     Ok(match node {
-        swc_core::ecma::ast::JSXElementChild::JSXText(t) => Py::new(py, (PyJSXElementChildText::build(py, t)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXElementChild::JSXExprContainer(c) => Py::new(py, (PyJSXElementChildExprContainer::build(py, c)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXElementChild::JSXSpreadChild(s) => Py::new(py, (PyJSXElementChildSpreadChild::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXElementChild::JSXElement(e) => Py::new(py, (PyJSXElementChildElement::build(py, e)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::JSXElementChild::JSXFragment(f) => Py::new(py, (PyJSXElementChildFragment::build(py, f)?, base))?.into_bound(py).into_super().unbind(),
+        swc_core::ecma::ast::JSXElementChild::JSXText(t) => {
+            Py::new(py, (PyJSXElementChildText::build(py, t)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXElementChild::JSXExprContainer(c) => {
+            Py::new(py, (PyJSXElementChildExprContainer::build(py, c)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXElementChild::JSXSpreadChild(s) => {
+            Py::new(py, (PyJSXElementChildSpreadChild::build(py, s)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXElementChild::JSXElement(e) => {
+            Py::new(py, (PyJSXElementChildElement::build(py, e)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::JSXElementChild::JSXFragment(f) => {
+            Py::new(py, (PyJSXElementChildFragment::build(py, f)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
     })
 }
 
-pub fn conv_jsx_element_children(py: Python<'_>, nodes: Vec<swc_core::ecma::ast::JSXElementChild>) -> PyResult<Vec<Py<PyJSXElementChild>>>{
-    nodes.into_iter().map(|n| conv_jsx_element_child(py, n)).collect()
+pub fn conv_jsx_element_children(
+    py: Python<'_>,
+    nodes: Vec<swc_core::ecma::ast::JSXElementChild>,
+) -> PyResult<Vec<Py<PyJSXElementChild>>> {
+    nodes
+        .into_iter()
+        .map(|n| conv_jsx_element_child(py, n))
+        .collect()
 }
 
 ast_node_variant!(PyExpr, PyJSXElement, JSXElement, {
@@ -392,27 +488,31 @@ ast_node_variant!(PyExpr, PyJSXElement, JSXElement, {
 
 #[derive(Clone)]
 #[pyclass]
-pub struct PyJSXOpeningFragment{
+pub struct PyJSXOpeningFragment {
     #[pyo3(get)]
-    pub span: PySpan
+    pub span: PySpan,
 }
 
 impl PyJSXOpeningFragment {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXOpeningFragment) -> PyResult<Self> {
-        Ok(PyJSXOpeningFragment { span: conv_span(py, node.span)? })
+        Ok(PyJSXOpeningFragment {
+            span: conv_span(py, node.span)?,
+        })
     }
 }
 
 #[derive(Clone)]
 #[pyclass]
-pub struct PyJSXClosingFragment{
+pub struct PyJSXClosingFragment {
     #[pyo3(get)]
-    pub span: PySpan
+    pub span: PySpan,
 }
 
 impl PyJSXClosingFragment {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::JSXClosingFragment) -> PyResult<Self> {
-        Ok(PyJSXClosingFragment { span: conv_span(py, node.span)? })
+        Ok(PyJSXClosingFragment {
+            span: conv_span(py, node.span)?,
+        })
     }
 }
 

@@ -1,5 +1,3 @@
-
-
 macro_rules! ast_node_variant {
     ($base:ty, $py_name:ident, $swc_ty:ty, { $($field:ident : $field_ty:ty = $conv:expr),* $(,)? }) => {
         #[::pyo3::pyclass(extends = $base)]

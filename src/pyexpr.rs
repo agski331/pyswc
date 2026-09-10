@@ -1,26 +1,15 @@
-
 use pyo3::prelude::*;
 
 use swc_core::common::Span;
 use swc_core::ecma::ast::{
     ArrayLit, AssignExpr, AssignTarget, AssignTargetPat, AwaitExpr, BinExpr, BindingIdent,
-    CallExpr, ClassExpr, CondExpr, Expr, ExprOrSpread, FnExpr, Invalid, Lit, MemberExpr, MetaPropExpr,
-    NewExpr, ObjectLit, OptCall, OptChainExpr, ParenExpr, Pat, PrivateName, SeqExpr,
+    CallExpr, ClassExpr, CondExpr, Expr, ExprOrSpread, FnExpr, Invalid, Lit, MemberExpr,
+    MetaPropExpr, NewExpr, ObjectLit, OptCall, OptChainExpr, ParenExpr, Pat, PrivateName, SeqExpr,
     SimpleAssignTarget, SuperPropExpr, TaggedTpl, ThisExpr, Tpl, TsAsExpr, TsConstAssertion,
     TsInstantiation, TsNonNullExpr, TsSatisfiesExpr, TsTypeAssertion, UnaryExpr, UpdateExpr,
     YieldExpr,
 };
 
-use crate::macros::ast_node_variant;
-use crate::pyclass::PyClass;
-use crate::pyfunction::{PyCallee, PyFunction, PyFunctionBody};
-use crate::pyident::{PyBindingIdent, PyPrivateName};
-use crate::pylit::PyLit;
-use crate::pypat::PyPat;
-use crate::pyprop::{PyMemberProp, PyPropOrSpread, PySuperProp};
-use crate::pyspan::PySpan;
-use crate::pyident::PyIdent;
-use crate::pytypeinfo::{PyTplElement, PyTsType, PyTsTypeParamDecl, PyTsTypeParamInstantiation};
 use crate::conversions::{
     conv_binary_op, conv_bindingident, conv_bool, conv_boxed_class, conv_boxed_expr,
     conv_boxed_function, conv_boxed_opt_chain_base, conv_boxed_tstype,
@@ -30,12 +19,21 @@ use crate::conversions::{
     conv_option_type_param_decl, conv_pat, conv_pats, conv_prop_or_spreads, conv_span, conv_super,
     conv_super_prop, conv_tpl_elements, conv_typeparams, conv_unary_op, conv_update_op,
 };
-
+use crate::macros::ast_node_variant;
+use crate::pyclass::PyClass;
+use crate::pyfunction::{PyCallee, PyFunction, PyFunctionBody};
+use crate::pyident::PyIdent;
+use crate::pyident::{PyBindingIdent, PyPrivateName};
+use crate::pylit::PyLit;
+use crate::pypat::PyPat;
+use crate::pyprop::{PyMemberProp, PyPropOrSpread, PySuperProp};
+use crate::pyspan::PySpan;
+use crate::pytypeinfo::{PyTplElement, PyTsType, PyTsTypeParamDecl, PyTsTypeParamInstantiation};
 
 #[derive(Clone)]
 #[pyclass(subclass)]
-pub struct PyExpr{
-    pub expr: Expr
+pub struct PyExpr {
+    pub expr: Expr,
 }
 
 ast_node_variant!(PyExpr, PyThisExpr, ThisExpr, {
@@ -92,9 +90,9 @@ ast_node_variant!(PyExpr, PyMemberExpr, MemberExpr, {
 
 #[derive(Clone)]
 #[pyclass]
-pub struct PySuper{
+pub struct PySuper {
     #[pyo3(get)]
-    pub span: PySpan
+    pub span: PySpan,
 }
 
 ast_node_variant!(PyExpr, PySuperPropExpr, SuperPropExpr, {
@@ -109,21 +107,23 @@ ast_node_variant!(PyExpr, PyParenExpr, ParenExpr, {
 });
 
 #[pyclass(subclass)]
-pub struct PyOptChainBase{
-
-}
+pub struct PyOptChainBase {}
 
 #[pyclass(extends=PyOptChainBase)]
-pub struct PyOptChainBaseMember{
+pub struct PyOptChainBaseMember {
     #[pyo3(get)]
-    pub member: Py<PyMemberExpr>
+    pub member: Py<PyMemberExpr>,
 }
 
 impl PyOptChainBaseMember {
     pub fn build(py: Python<'_>, node: MemberExpr) -> PyResult<Self> {
-        let base = PyExpr { expr: Expr::Member(node.clone()) };
+        let base = PyExpr {
+            expr: Expr::Member(node.clone()),
+        };
         let sub = PyMemberExpr::build(py, node)?;
-        Ok(PyOptChainBaseMember { member: Py::new(py, (sub, base))? })
+        Ok(PyOptChainBaseMember {
+            member: Py::new(py, (sub, base))?,
+        })
     }
 }
 
@@ -175,100 +175,214 @@ pub fn expr_to_py(py: Python<'_>, expr: Expr) -> PyResult<Py<PyExpr>> {
 }
 
 #[pyclass(subclass)]
-pub struct PySimpleAssignTarget{
-
-}
+pub struct PySimpleAssignTarget {}
 
 #[pyclass(extends=PySimpleAssignTarget)]
-pub struct PySimpleAssignTargetIdent{
+pub struct PySimpleAssignTargetIdent {
     #[pyo3(get)]
-    pub ident: Py<PyBindingIdent>
+    pub ident: Py<PyBindingIdent>,
 }
 
 impl PySimpleAssignTargetIdent {
     pub fn build(py: Python<'_>, node: BindingIdent) -> PyResult<Self> {
-        Ok(PySimpleAssignTargetIdent { ident: conv_bindingident(py, node)? })
+        Ok(PySimpleAssignTargetIdent {
+            ident: conv_bindingident(py, node)?,
+        })
     }
 }
 
 macro_rules! simple_assign_target_expr_variant {
     ($py_name:ident, $field:ident, $py_expr_ty:ident, $swc_ty:ty, $expr_variant:ident) => {
         #[pyclass(extends=PySimpleAssignTarget)]
-        pub struct $py_name{
+        pub struct $py_name {
             #[pyo3(get)]
-            pub $field: Py<$py_expr_ty>
+            pub $field: Py<$py_expr_ty>,
         }
 
         impl $py_name {
             pub fn build(py: Python<'_>, node: $swc_ty) -> PyResult<Self> {
-                let base = PyExpr { expr: Expr::$expr_variant(node.clone()) };
+                let base = PyExpr {
+                    expr: Expr::$expr_variant(node.clone()),
+                };
                 let sub = $py_expr_ty::build(py, node)?;
-                Ok($py_name { $field: Py::new(py, (sub, base))? })
+                Ok($py_name {
+                    $field: Py::new(py, (sub, base))?,
+                })
             }
         }
     };
 }
 
-simple_assign_target_expr_variant!(PySimpleAssignTargetMember, member, PyMemberExpr, MemberExpr, Member);
-simple_assign_target_expr_variant!(PySimpleAssignTargetSuperProp, super_prop, PySuperPropExpr, SuperPropExpr, SuperProp);
-simple_assign_target_expr_variant!(PySimpleAssignTargetParen, paren, PyParenExpr, ParenExpr, Paren);
-simple_assign_target_expr_variant!(PySimpleAssignTargetOptChain, opt_chain, PyOptChainExpr, OptChainExpr, OptChain);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetMember,
+    member,
+    PyMemberExpr,
+    MemberExpr,
+    Member
+);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetSuperProp,
+    super_prop,
+    PySuperPropExpr,
+    SuperPropExpr,
+    SuperProp
+);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetParen,
+    paren,
+    PyParenExpr,
+    ParenExpr,
+    Paren
+);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetOptChain,
+    opt_chain,
+    PyOptChainExpr,
+    OptChainExpr,
+    OptChain
+);
 simple_assign_target_expr_variant!(PySimpleAssignTargetTsAs, ts_as, PyTsAsExpr, TsAsExpr, TsAs);
-simple_assign_target_expr_variant!(PySimpleAssignTargetTsSatisfies, ts_satisfies, PyTsSatisfiesExpr, TsSatisfiesExpr, TsSatisfies);
-simple_assign_target_expr_variant!(PySimpleAssignTargetTsNonNull, ts_non_null, PyTsNonNullExpr, TsNonNullExpr, TsNonNull);
-simple_assign_target_expr_variant!(PySimpleAssignTargetTsTypeAssertion, ts_type_assertion, PyTsTypeAssertion, TsTypeAssertion, TsTypeAssertion);
-simple_assign_target_expr_variant!(PySimpleAssignTargetTsInstantiation, ts_instantiation, PyTsInstantiation, TsInstantiation, TsInstantiation);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetTsSatisfies,
+    ts_satisfies,
+    PyTsSatisfiesExpr,
+    TsSatisfiesExpr,
+    TsSatisfies
+);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetTsNonNull,
+    ts_non_null,
+    PyTsNonNullExpr,
+    TsNonNullExpr,
+    TsNonNull
+);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetTsTypeAssertion,
+    ts_type_assertion,
+    PyTsTypeAssertion,
+    TsTypeAssertion,
+    TsTypeAssertion
+);
+simple_assign_target_expr_variant!(
+    PySimpleAssignTargetTsInstantiation,
+    ts_instantiation,
+    PyTsInstantiation,
+    TsInstantiation,
+    TsInstantiation
+);
 
 #[pyclass(extends=PySimpleAssignTarget)]
-pub struct PySimpleAssignTargetInvalid{
+pub struct PySimpleAssignTargetInvalid {
     #[pyo3(get)]
-    pub span: PySpan
+    pub span: PySpan,
 }
 
 impl PySimpleAssignTargetInvalid {
     pub fn build(py: Python<'_>, node: Invalid) -> PyResult<Self> {
-        Ok(PySimpleAssignTargetInvalid { span: conv_span(py, node.span)? })
+        Ok(PySimpleAssignTargetInvalid {
+            span: conv_span(py, node.span)?,
+        })
     }
 }
 
-pub fn conv_simple_assign_target(py: Python<'_>, target: SimpleAssignTarget) -> PyResult<Py<PySimpleAssignTarget>> {
-    let base = PySimpleAssignTarget { };
+pub fn conv_simple_assign_target(
+    py: Python<'_>,
+    target: SimpleAssignTarget,
+) -> PyResult<Py<PySimpleAssignTarget>> {
+    let base = PySimpleAssignTarget {};
     Ok(match target {
-        SimpleAssignTarget::Ident(i) => Py::new(py, (PySimpleAssignTargetIdent::build(py, i)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::Member(m) => Py::new(py, (PySimpleAssignTargetMember::build(py, m)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::SuperProp(s) => Py::new(py, (PySimpleAssignTargetSuperProp::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::Paren(p) => Py::new(py, (PySimpleAssignTargetParen::build(py, p)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::OptChain(o) => Py::new(py, (PySimpleAssignTargetOptChain::build(py, o)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::TsAs(t) => Py::new(py, (PySimpleAssignTargetTsAs::build(py, t)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::TsSatisfies(t) => Py::new(py, (PySimpleAssignTargetTsSatisfies::build(py, t)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::TsNonNull(t) => Py::new(py, (PySimpleAssignTargetTsNonNull::build(py, t)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::TsTypeAssertion(t) => Py::new(py, (PySimpleAssignTargetTsTypeAssertion::build(py, t)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::TsInstantiation(t) => Py::new(py, (PySimpleAssignTargetTsInstantiation::build(py, t)?, base))?.into_bound(py).into_super().unbind(),
-        SimpleAssignTarget::Invalid(i) => Py::new(py, (PySimpleAssignTargetInvalid::build(py, i)?, base))?.into_bound(py).into_super().unbind(),
+        SimpleAssignTarget::Ident(i) => {
+            Py::new(py, (PySimpleAssignTargetIdent::build(py, i)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::Member(m) => {
+            Py::new(py, (PySimpleAssignTargetMember::build(py, m)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::SuperProp(s) => {
+            Py::new(py, (PySimpleAssignTargetSuperProp::build(py, s)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::Paren(p) => {
+            Py::new(py, (PySimpleAssignTargetParen::build(py, p)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::OptChain(o) => {
+            Py::new(py, (PySimpleAssignTargetOptChain::build(py, o)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::TsAs(t) => {
+            Py::new(py, (PySimpleAssignTargetTsAs::build(py, t)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::TsSatisfies(t) => {
+            Py::new(py, (PySimpleAssignTargetTsSatisfies::build(py, t)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::TsNonNull(t) => {
+            Py::new(py, (PySimpleAssignTargetTsNonNull::build(py, t)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        SimpleAssignTarget::TsTypeAssertion(t) => Py::new(
+            py,
+            (PySimpleAssignTargetTsTypeAssertion::build(py, t)?, base),
+        )?
+        .into_bound(py)
+        .into_super()
+        .unbind(),
+        SimpleAssignTarget::TsInstantiation(t) => Py::new(
+            py,
+            (PySimpleAssignTargetTsInstantiation::build(py, t)?, base),
+        )?
+        .into_bound(py)
+        .into_super()
+        .unbind(),
+        SimpleAssignTarget::Invalid(i) => {
+            Py::new(py, (PySimpleAssignTargetInvalid::build(py, i)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
     })
 }
 
 #[pyclass(subclass)]
-pub struct PyAssignTarget{
-
-}
+pub struct PyAssignTarget {}
 
 #[pyclass(extends=PyAssignTarget)]
-pub struct PyAssignTargetSimple{
+pub struct PyAssignTargetSimple {
     #[pyo3(get)]
-    pub target: Py<PySimpleAssignTarget>
+    pub target: Py<PySimpleAssignTarget>,
 }
 
 impl PyAssignTargetSimple {
     pub fn build(py: Python<'_>, node: SimpleAssignTarget) -> PyResult<Self> {
-        Ok(PyAssignTargetSimple { target: conv_simple_assign_target(py, node)? })
+        Ok(PyAssignTargetSimple {
+            target: conv_simple_assign_target(py, node)?,
+        })
     }
 }
 
 #[pyclass(extends=PyAssignTarget)]
-pub struct PyAssignTargetPat{
+pub struct PyAssignTargetPat {
     #[pyo3(get)]
-    pub pat: Py<PyPat>
+    pub pat: Py<PyPat>,
 }
 
 impl PyAssignTargetPat {
@@ -278,15 +392,23 @@ impl PyAssignTargetPat {
             AssignTargetPat::Object(o) => Pat::Object(o),
             AssignTargetPat::Invalid(i) => Pat::Invalid(i),
         };
-        Ok(PyAssignTargetPat { pat: conv_pat(py, pat)? })
+        Ok(PyAssignTargetPat {
+            pat: conv_pat(py, pat)?,
+        })
     }
 }
 
 pub fn conv_assign_target(py: Python<'_>, target: AssignTarget) -> PyResult<Py<PyAssignTarget>> {
-    let base = PyAssignTarget { };
+    let base = PyAssignTarget {};
     Ok(match target {
-        AssignTarget::Simple(s) => Py::new(py, (PyAssignTargetSimple::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        AssignTarget::Pat(p) => Py::new(py, (PyAssignTargetPat::build(py, p)?, base))?.into_bound(py).into_super().unbind(),
+        AssignTarget::Simple(s) => Py::new(py, (PyAssignTargetSimple::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        AssignTarget::Pat(p) => Py::new(py, (PyAssignTargetPat::build(py, p)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
     })
 }
 
@@ -322,26 +444,30 @@ ast_node_variant!(PyExpr, PySeqExpr, SeqExpr, {
 });
 
 #[pyclass(extends=PyExpr)]
-pub struct PyIdentExpr{
+pub struct PyIdentExpr {
     #[pyo3(get)]
-    pub ident: PyIdent
+    pub ident: PyIdent,
 }
 
 impl PyIdentExpr {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::Ident) -> PyResult<Self> {
-        Ok(PyIdentExpr { ident: conv_ident(py, node)? })
+        Ok(PyIdentExpr {
+            ident: conv_ident(py, node)?,
+        })
     }
 }
 
 #[pyclass(extends=PyExpr)]
-pub struct PyLitExpr{
+pub struct PyLitExpr {
     #[pyo3(get)]
-    pub lit: Py<PyLit>
+    pub lit: Py<PyLit>,
 }
 
 impl PyLitExpr {
     pub fn build(py: Python<'_>, node: Lit) -> PyResult<Self> {
-        Ok(PyLitExpr { lit: Py::new(py, PyLit { lit: node })? })
+        Ok(PyLitExpr {
+            lit: Py::new(py, PyLit { lit: node })?,
+        })
     }
 }
 
@@ -360,11 +486,11 @@ ast_node_variant!(PyExpr, PyTaggedTpl, TaggedTpl, {
 });
 
 #[pyclass]
-pub struct PyArrowFunctionBody{
+pub struct PyArrowFunctionBody {
     #[pyo3(get)]
     pub function_body: Option<Py<PyFunctionBody>>,
     #[pyo3(get)]
-    pub expr: Option<Py<PyExpr>>
+    pub expr: Option<Py<PyExpr>>,
 }
 
 ast_node_variant!(PyExpr, PyArrowExpr, swc_core::ecma::ast::ArrowExpr, {
@@ -379,18 +505,18 @@ ast_node_variant!(PyExpr, PyArrowExpr, swc_core::ecma::ast::ArrowExpr, {
 });
 
 #[pyclass(extends=PyExpr)]
-pub struct PyClassExpr{
+pub struct PyClassExpr {
     #[pyo3(get)]
     pub ident: Option<PyIdent>,
     #[pyo3(get)]
-    pub class: Py<PyClass>
+    pub class: Py<PyClass>,
 }
 
 impl PyClassExpr {
     pub fn build(py: Python<'_>, node: ClassExpr) -> PyResult<Self> {
         Ok(PyClassExpr {
             ident: conv_option_ident(py, node.ident)?,
-            class: conv_boxed_class(py, node.class)?
+            class: conv_boxed_class(py, node.class)?,
         })
     }
 }
@@ -417,14 +543,16 @@ ast_node_variant!(PyExpr, PyTsConstAssertion, TsConstAssertion, {
 });
 
 #[pyclass(extends=PyExpr)]
-pub struct PyPrivateNameExpr{
+pub struct PyPrivateNameExpr {
     #[pyo3(get)]
-    pub name: PyPrivateName
+    pub name: PyPrivateName,
 }
 
 impl PyPrivateNameExpr {
     pub fn build(py: Python<'_>, node: PrivateName) -> PyResult<Self> {
-        Ok(PyPrivateNameExpr { name: crate::conversions::conv_private_name(py, node)? })
+        Ok(PyPrivateNameExpr {
+            name: crate::conversions::conv_private_name(py, node)?,
+        })
     }
 }
 

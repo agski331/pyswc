@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use swc_core::ecma::ast::{ImportPhase};
+use swc_core::ecma::ast::ImportPhase;
 
 use crate::{
     pyexpr::PyExpr,
@@ -9,51 +9,51 @@ use crate::{
     pytypeinfo::{PyTsTypeAnn, PyTsTypeParamDecl},
 };
 #[pyclass]
-pub struct PyDecorator{
+pub struct PyDecorator {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub expr: Py<PyExpr>
+    pub expr: Py<PyExpr>,
 }
 
 #[pyclass]
-pub struct PyCallee{
+pub struct PyCallee {
     pub span: Option<PySpan>,
     pub is_super: bool,
     pub phase: Option<ImportPhase>,
-    pub expr: Option<Py<PyExpr>>
+    pub expr: Option<Py<PyExpr>>,
 }
 
 #[pyclass]
-pub struct PyTsThisParam{
+pub struct PyTsThisParam {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub this_span: PySpan,
     #[pyo3(get)]
-    pub type_ann: Option<Py<PyTsTypeAnn>>
+    pub type_ann: Option<Py<PyTsTypeAnn>>,
 }
 
 #[pyclass]
-pub struct PyParam{
+pub struct PyParam {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub decorators: Vec<Py<PyDecorator>>,
     #[pyo3(get)]
-    pub pat: Py<PyPat>
+    pub pat: Py<PyPat>,
 }
 
 #[pyclass]
-pub struct PyFunctionBody{
+pub struct PyFunctionBody {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub stmts: Vec<Py<PyStmt>>
+    pub stmts: Vec<Py<PyStmt>>,
 }
 
 #[pyclass]
-pub struct PyFunction{
+pub struct PyFunction {
     #[pyo3(get)]
     pub this_param: Option<Py<PyTsThisParam>>,
     #[pyo3(get)]
@@ -73,5 +73,5 @@ pub struct PyFunction{
     #[pyo3(get)]
     pub type_params: Option<Py<PyTsTypeParamDecl>>,
     #[pyo3(get)]
-    pub return_type: Option<Py<PyTsTypeAnn>>
+    pub return_type: Option<Py<PyTsTypeAnn>>,
 }

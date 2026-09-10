@@ -3,8 +3,8 @@ use swc_core::ecma::ast::{TsEnumDecl, TsInterfaceDecl, TsTypeAliasDecl, UsingDec
 
 use crate::{
     conversions::{
-        conv_bool, conv_boxed_class, conv_boxed_function, conv_boxed_tstype, conv_ctxt,
-        conv_ident, conv_option_type_param_decl, conv_span, conv_ts_enum_members,
+        conv_bool, conv_boxed_class, conv_boxed_function, conv_boxed_tstype, conv_ctxt, conv_ident,
+        conv_option_type_param_decl, conv_span, conv_ts_enum_members,
         conv_ts_expr_with_type_args_vec, conv_ts_interface_body, conv_var_decl_kind,
         conv_var_declarators,
     },
@@ -18,18 +18,16 @@ use crate::{
 };
 
 #[pyclass(subclass)]
-pub struct PyDecl{
-
-}
+pub struct PyDecl {}
 
 #[pyclass(extends=PyDecl)]
-pub struct PyClassDecl{
+pub struct PyClassDecl {
     #[pyo3(get)]
     pub ident: PyIdent,
     #[pyo3(get)]
     pub declare: bool,
     #[pyo3(get)]
-    pub class: Py<PyClass>
+    pub class: Py<PyClass>,
 }
 
 impl PyClassDecl {
@@ -37,19 +35,19 @@ impl PyClassDecl {
         Ok(PyClassDecl {
             ident: conv_ident(py, node.ident)?,
             declare: node.declare,
-            class: conv_boxed_class(py, node.class)?
+            class: conv_boxed_class(py, node.class)?,
         })
     }
 }
 
 #[pyclass(extends=PyDecl)]
-pub struct PyFnDecl{
+pub struct PyFnDecl {
     #[pyo3(get)]
     pub ident: PyIdent,
     #[pyo3(get)]
     pub declare: bool,
     #[pyo3(get)]
-    pub function: Py<PyFunction>
+    pub function: Py<PyFunction>,
 }
 
 impl PyFnDecl {
@@ -57,13 +55,13 @@ impl PyFnDecl {
         Ok(PyFnDecl {
             ident: conv_ident(py, node.ident)?,
             declare: node.declare,
-            function: conv_boxed_function(py, node.function)?
+            function: conv_boxed_function(py, node.function)?,
         })
     }
 }
 
 #[pyclass]
-pub struct PyVarDeclarator{
+pub struct PyVarDeclarator {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
@@ -71,7 +69,7 @@ pub struct PyVarDeclarator{
     #[pyo3(get)]
     pub init: Option<Py<crate::pyexpr::PyExpr>>,
     #[pyo3(get)]
-    pub definite: bool
+    pub definite: bool,
 }
 
 ast_node_variant!(PyDecl, PyVarDecl, VarDecl, {
@@ -89,11 +87,11 @@ ast_node_variant!(PyDecl, PyUsingDecl, UsingDecl, {
 });
 
 #[pyclass]
-pub struct PyTsInterfaceBody{
+pub struct PyTsInterfaceBody {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub body: Vec<Py<crate::pytypeinfo::PyTsTypeElement>>
+    pub body: Vec<Py<crate::pytypeinfo::PyTsTypeElement>>,
 }
 
 ast_node_variant!(PyDecl, PyTsInterfaceDecl, TsInterfaceDecl, {
@@ -114,7 +112,7 @@ ast_node_variant!(PyDecl, PyTsTypeAliasDecl, TsTypeAliasDecl, {
 });
 
 #[pyclass]
-pub struct PyTsEnumMember{
+pub struct PyTsEnumMember {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
@@ -124,7 +122,7 @@ pub struct PyTsEnumMember{
     #[pyo3(get)]
     pub id_str_value: Option<String>,
     #[pyo3(get)]
-    pub init: Option<Py<crate::pyexpr::PyExpr>>
+    pub init: Option<Py<crate::pyexpr::PyExpr>>,
 }
 
 ast_node_variant!(PyDecl, PyTsEnumDecl, TsEnumDecl, {
@@ -137,13 +135,13 @@ ast_node_variant!(PyDecl, PyTsEnumDecl, TsEnumDecl, {
 
 #[derive(Clone)]
 #[pyclass]
-pub struct PyTsModuleName{
+pub struct PyTsModuleName {
     #[pyo3(get)]
     pub ident: Option<PyIdent>,
     #[pyo3(get)]
     pub str_span: Option<PySpan>,
     #[pyo3(get)]
-    pub str_value: Option<String>
+    pub str_value: Option<String>,
 }
 
 ast_node_variant!(PyDecl, PyTsModuleDecl, swc_core::ecma::ast::TsModuleDecl, {
@@ -156,9 +154,7 @@ ast_node_variant!(PyDecl, PyTsModuleDecl, swc_core::ecma::ast::TsModuleDecl, {
 });
 
 #[pyclass(subclass)]
-pub struct PyTsNamespaceBody{
-
-}
+pub struct PyTsNamespaceBody {}
 
 ast_node_variant!(PyTsNamespaceBody, PyTsModuleBlock, swc_core::ecma::ast::TsModuleBlock, {
     span: PySpan = conv_span,
@@ -173,17 +169,47 @@ ast_node_variant!(PyTsNamespaceBody, PyTsNamespaceDecl, swc_core::ecma::ast::TsN
     body: Py<PyTsNamespaceBody> = crate::conversions::conv_boxed_ts_namespace_body
 });
 
-pub fn conv_decl(py: Python<'_>, decl: swc_core::ecma::ast::Decl) -> PyResult<Py<PyDecl>>{
-    let base = PyDecl { };
+pub fn conv_decl(py: Python<'_>, decl: swc_core::ecma::ast::Decl) -> PyResult<Py<PyDecl>> {
+    let base = PyDecl {};
     Ok(match decl {
-        swc_core::ecma::ast::Decl::Class(c) => Py::new(py, (PyClassDecl::build(py, c)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::Fn(f) => Py::new(py, (PyFnDecl::build(py, f)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::Var(v) => Py::new(py, (PyVarDecl::build(py, *v)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::Using(u) => Py::new(py, (PyUsingDecl::build(py, *u)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::TsInterface(i) => Py::new(py, (PyTsInterfaceDecl::build(py, *i)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::TsTypeAlias(a) => Py::new(py, (PyTsTypeAliasDecl::build(py, *a)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::TsEnum(e) => Py::new(py, (PyTsEnumDecl::build(py, *e)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::Decl::TsModule(m) => Py::new(py, (PyTsModuleDecl::build(py, *m)?, base))?.into_bound(py).into_super().unbind(),
+        swc_core::ecma::ast::Decl::Class(c) => Py::new(py, (PyClassDecl::build(py, c)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        swc_core::ecma::ast::Decl::Fn(f) => Py::new(py, (PyFnDecl::build(py, f)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        swc_core::ecma::ast::Decl::Var(v) => Py::new(py, (PyVarDecl::build(py, *v)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        swc_core::ecma::ast::Decl::Using(u) => Py::new(py, (PyUsingDecl::build(py, *u)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        swc_core::ecma::ast::Decl::TsInterface(i) => {
+            Py::new(py, (PyTsInterfaceDecl::build(py, *i)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::Decl::TsTypeAlias(a) => {
+            Py::new(py, (PyTsTypeAliasDecl::build(py, *a)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::Decl::TsEnum(e) => Py::new(py, (PyTsEnumDecl::build(py, *e)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        swc_core::ecma::ast::Decl::TsModule(m) => {
+            Py::new(py, (PyTsModuleDecl::build(py, *m)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
     })
 }
 

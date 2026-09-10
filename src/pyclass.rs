@@ -8,8 +8,8 @@ use crate::{
     conversions::{
         conv_block_stmt, conv_bool, conv_boxed_expr, conv_boxed_function, conv_ctxt,
         conv_decorators, conv_fn_params, conv_key, conv_method_kind, conv_option_accessibility,
-        conv_option_boxed_expr, conv_option_function_body, conv_option_tstypeann, conv_private_name,
-        conv_propname, conv_span,
+        conv_option_boxed_expr, conv_option_function_body, conv_option_tstypeann,
+        conv_private_name, conv_propname, conv_span,
     },
     macros::ast_node_variant,
     pyexpr::PyExpr,
@@ -23,17 +23,15 @@ use crate::{
 };
 
 #[pyclass]
-pub struct PyKey{
+pub struct PyKey {
     #[pyo3(get)]
     pub private: Option<PyPrivateName>,
     #[pyo3(get)]
-    pub public: Option<Py<PyPropName>>
+    pub public: Option<Py<PyPropName>>,
 }
 
 #[pyclass(subclass)]
-pub struct PyClassMember{
-
-}
+pub struct PyClassMember {}
 
 ast_node_variant!(PyClassMember, PyConstructor, Constructor, {
     span: PySpan = conv_span,
@@ -131,18 +129,16 @@ ast_node_variant!(PyClassMember, PyAutoAccessor, AutoAccessor, {
 });
 
 #[pyclass(subclass)]
-pub struct PyParamOrTsParamProp{
-
-}
+pub struct PyParamOrTsParamProp {}
 
 #[pyclass(extends=PyParamOrTsParamProp)]
-pub struct PyParamOrTsParamPropParam{
+pub struct PyParamOrTsParamPropParam {
     #[pyo3(get)]
-    pub param: Py<PyParam>
+    pub param: Py<PyParam>,
 }
 
 #[pyclass(extends=PyParamOrTsParamProp)]
-pub struct PyParamOrTsParamPropTsParamProp{
+pub struct PyParamOrTsParamPropTsParamProp {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
@@ -156,21 +152,25 @@ pub struct PyParamOrTsParamPropTsParamProp{
     #[pyo3(get)]
     pub param_ident: Option<Py<crate::pyident::PyBindingIdent>>,
     #[pyo3(get)]
-    pub param_assign: Option<Py<crate::pypat::PyAssignPat>>
+    pub param_assign: Option<Py<crate::pypat::PyAssignPat>>,
 }
 
 impl PyParamOrTsParamPropParam {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::Param) -> PyResult<Self> {
-        Ok(PyParamOrTsParamPropParam { param: crate::conversions::conv_param(py, node)? })
+        Ok(PyParamOrTsParamPropParam {
+            param: crate::conversions::conv_param(py, node)?,
+        })
     }
 }
 
 impl PyParamOrTsParamPropTsParamProp {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::TsParamProp) -> PyResult<Self> {
         let (param_ident, param_assign) = match node.param {
-            swc_core::ecma::ast::TsParamPropParam::Ident(i) => (Some(crate::conversions::conv_bindingident(py, i)?), None),
+            swc_core::ecma::ast::TsParamPropParam::Ident(i) => {
+                (Some(crate::conversions::conv_bindingident(py, i)?), None)
+            }
             swc_core::ecma::ast::TsParamPropParam::Assign(a) => {
-                let base = PyPat { };
+                let base = PyPat {};
                 let sub = crate::pypat::PyAssignPat::build(py, a)?;
                 (None, Some(Py::new(py, (sub, base))?))
             }
@@ -182,27 +182,46 @@ impl PyParamOrTsParamPropTsParamProp {
             is_override: node.is_override,
             readonly: node.readonly,
             param_ident,
-            param_assign
+            param_assign,
         })
     }
 }
 
-pub fn conv_param_or_ts_param_prop(py: Python<'_>, node: swc_core::ecma::ast::ParamOrTsParamProp) -> PyResult<Py<PyParamOrTsParamProp>>{
-    let base = PyParamOrTsParamProp { };
+pub fn conv_param_or_ts_param_prop(
+    py: Python<'_>,
+    node: swc_core::ecma::ast::ParamOrTsParamProp,
+) -> PyResult<Py<PyParamOrTsParamProp>> {
+    let base = PyParamOrTsParamProp {};
     Ok(match node {
-        swc_core::ecma::ast::ParamOrTsParamProp::Param(p) => Py::new(py, (PyParamOrTsParamPropParam::build(py, p)?, base))?.into_bound(py).into_super().unbind(),
-        swc_core::ecma::ast::ParamOrTsParamProp::TsParamProp(p) => Py::new(py, (PyParamOrTsParamPropTsParamProp::build(py, p)?, base))?.into_bound(py).into_super().unbind(),
+        swc_core::ecma::ast::ParamOrTsParamProp::Param(p) => {
+            Py::new(py, (PyParamOrTsParamPropParam::build(py, p)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        swc_core::ecma::ast::ParamOrTsParamProp::TsParamProp(p) => {
+            Py::new(py, (PyParamOrTsParamPropTsParamProp::build(py, p)?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
     })
 }
 
-pub fn conv_param_or_ts_param_props(py: Python<'_>, nodes: Vec<swc_core::ecma::ast::ParamOrTsParamProp>) -> PyResult<Vec<Py<PyParamOrTsParamProp>>>{
-    nodes.into_iter().map(|n| conv_param_or_ts_param_prop(py, n)).collect()
+pub fn conv_param_or_ts_param_props(
+    py: Python<'_>,
+    nodes: Vec<swc_core::ecma::ast::ParamOrTsParamProp>,
+) -> PyResult<Vec<Py<PyParamOrTsParamProp>>> {
+    nodes
+        .into_iter()
+        .map(|n| conv_param_or_ts_param_prop(py, n))
+        .collect()
 }
 
 use crate::pyfunction::PyParam;
 
 #[pyclass]
-pub struct PyClass{
+pub struct PyClass {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
@@ -220,5 +239,5 @@ pub struct PyClass{
     #[pyo3(get)]
     pub super_type_params: Option<Py<crate::pytypeinfo::PyTsTypeParamInstantiation>>,
     #[pyo3(get)]
-    pub implements: Vec<Py<crate::pytypeinfo::PyTsExprWithTypeArgs>>
+    pub implements: Vec<Py<crate::pytypeinfo::PyTsExprWithTypeArgs>>,
 }

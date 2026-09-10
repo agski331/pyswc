@@ -1,20 +1,23 @@
 use pyo3::prelude::*;
 use swc_core::ecma::ast::{
-    AssignProp, BigInt as SwcBigInt, ComputedPropName, GetterProp, Ident, IdentName,
-    KeyValueProp, MethodProp, Number, SetterProp, SpreadElement, Str,
+    AssignProp, BigInt as SwcBigInt, ComputedPropName, GetterProp, Ident, IdentName, KeyValueProp,
+    MethodProp, Number, SetterProp, SpreadElement, Str,
 };
 
 use crate::{
     conversions::{
         conv_atom, conv_bigint_value, conv_boxed_expr, conv_boxed_function, conv_f64, conv_ident,
         conv_propname, conv_span, conv_wtf8atom,
-    }, macros::ast_node_variant, pyexpr::PyExpr, pyfunction::PyFunction, pyident::{PyIdent, PyIdentName, PyPrivateName}, pyspan::PySpan,
+    },
+    macros::ast_node_variant,
+    pyexpr::PyExpr,
+    pyfunction::PyFunction,
+    pyident::{PyIdent, PyIdentName, PyPrivateName},
+    pyspan::PySpan,
 };
 
 #[pyclass(subclass)]
-pub struct PyPropName{
-
-}
+pub struct PyPropName {}
 
 ast_node_variant!(PyPropName, PyIdentPropName, IdentName, {
     span: PySpan = conv_span,
@@ -42,27 +45,27 @@ ast_node_variant!(PyPropName, PyBigIntPropName, SwcBigInt, {
 });
 
 #[pyclass]
-pub struct PyExprOrSpread{
+pub struct PyExprOrSpread {
     #[pyo3(get)]
     pub spread: Option<PySpan>,
     #[pyo3(get)]
-    pub expr: Py<PyExpr>
+    pub expr: Py<PyExpr>,
 }
 
 #[pyclass(subclass)]
-pub struct PyProp{
-
-}
+pub struct PyProp {}
 
 #[pyclass(extends=PyProp)]
-pub struct PyShorthandProp{
+pub struct PyShorthandProp {
     #[pyo3(get)]
-    pub ident: PyIdent
+    pub ident: PyIdent,
 }
 
 impl PyShorthandProp {
     pub fn build(py: Python<'_>, ident: Ident) -> PyResult<Self> {
-        Ok(PyShorthandProp { ident: conv_ident(py, ident)? })
+        Ok(PyShorthandProp {
+            ident: conv_ident(py, ident)?,
+        })
     }
 }
 
@@ -95,19 +98,19 @@ ast_node_variant!(PyProp, PyMethodProp, MethodProp, {
 });
 
 #[pyclass(subclass)]
-pub struct PyPropOrSpread{
-
-}
+pub struct PyPropOrSpread {}
 
 #[pyclass(extends=PyPropOrSpread)]
-pub struct PyPropOrSpreadProp{
+pub struct PyPropOrSpreadProp {
     #[pyo3(get)]
-    pub prop: Py<PyProp>
+    pub prop: Py<PyProp>,
 }
 
 impl PyPropOrSpreadProp {
     pub fn build(py: Python<'_>, prop: Box<swc_core::ecma::ast::Prop>) -> PyResult<Self> {
-        Ok(PyPropOrSpreadProp { prop: crate::conversions::conv_boxed_prop(py, prop)? })
+        Ok(PyPropOrSpreadProp {
+            prop: crate::conversions::conv_boxed_prop(py, prop)?,
+        })
     }
 }
 
@@ -117,19 +120,19 @@ ast_node_variant!(PyPropOrSpread, PySpreadElement, SpreadElement, {
 });
 
 #[pyclass]
-pub struct PyMemberProp{
+pub struct PyMemberProp {
     #[pyo3(get)]
     pub ident: Option<PyIdentName>,
     #[pyo3(get)]
     pub private_name: Option<PyPrivateName>,
     #[pyo3(get)]
-    pub computed: Option<Py<PyComputedPropName>>
+    pub computed: Option<Py<PyComputedPropName>>,
 }
 
 #[pyclass]
-pub struct PySuperProp{
+pub struct PySuperProp {
     #[pyo3(get)]
     pub ident: Option<PyIdentName>,
     #[pyo3(get)]
-    pub computed: Option<Py<PyComputedPropName>>
+    pub computed: Option<Py<PyComputedPropName>>,
 }

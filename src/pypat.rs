@@ -19,19 +19,19 @@ use crate::{
 };
 
 #[pyclass(subclass)]
-pub struct PyPat{
-
-}
+pub struct PyPat {}
 
 #[pyclass(extends=PyPat)]
-pub struct PyBindingIdentPat{
+pub struct PyBindingIdentPat {
     #[pyo3(get)]
-    pub ident: Py<PyBindingIdent>
+    pub ident: Py<PyBindingIdent>,
 }
 
 impl PyBindingIdentPat {
     pub fn build(py: Python<'_>, node: BindingIdent) -> PyResult<Self> {
-        Ok(PyBindingIdentPat { ident: conv_bindingident(py, node)? })
+        Ok(PyBindingIdentPat {
+            ident: conv_bindingident(py, node)?,
+        })
     }
 }
 
@@ -67,26 +67,25 @@ ast_node_variant!(PyPat, PyInvalidPat, Invalid, {
 });
 
 #[pyclass(extends=PyPat)]
-pub struct PyExprPat{
+pub struct PyExprPat {
     #[pyo3(get)]
-    pub expr: Py<PyExpr>
+    pub expr: Py<PyExpr>,
 }
 
 impl PyExprPat {
     pub fn build(py: Python<'_>, expr: Box<swc_core::ecma::ast::Expr>) -> PyResult<Self> {
-        Ok(PyExprPat { expr: conv_boxed_expr(py, expr)? })
+        Ok(PyExprPat {
+            expr: conv_boxed_expr(py, expr)?,
+        })
     }
 }
-
 
 pub fn pat_to_py(py: Python<'_>, pat: Pat) -> PyResult<Py<PyPat>> {
     conv_pat(py, pat)
 }
 
 #[pyclass(subclass)]
-pub struct PyObjectPatProp{
-
-}
+pub struct PyObjectPatProp {}
 
 ast_node_variant!(PyObjectPatProp, PyKeyValuePatProp, KeyValuePatProp, {
     key: Py<PyPropName> = conv_propname,
@@ -106,7 +105,9 @@ ast_node_variant!(PyObjectPatProp, PyObjectPatRestProp, RestPat, {
     type_ann: Option<Py<PyTsTypeAnn>> = conv_option_tstypeann
 });
 
-
-pub fn object_pat_prop_to_py(py: Python<'_>, prop: swc_core::ecma::ast::ObjectPatProp) -> PyResult<Py<PyObjectPatProp>> {
+pub fn object_pat_prop_to_py(
+    py: Python<'_>,
+    prop: swc_core::ecma::ast::ObjectPatProp,
+) -> PyResult<Py<PyObjectPatProp>> {
     crate::conversions::conv_object_pat_prop(py, prop)
 }

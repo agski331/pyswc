@@ -1,11 +1,11 @@
 use pyo3::prelude::*;
-use swc_core::ecma::ast::*;
 use swc_core::ecma::ast::BigInt as SwcBigInt;
+use swc_core::ecma::ast::*;
 
 use crate::{
     conversions::{
-        conv_bigint_value, conv_bool, conv_boxed_expr, conv_boxed_tstype,
-        conv_boxed_tstypeann, conv_f64, conv_fn_param, conv_fn_params, conv_ident, conv_option_boxed_tstype,
+        conv_bigint_value, conv_bool, conv_boxed_expr, conv_boxed_tstype, conv_boxed_tstypeann,
+        conv_f64, conv_fn_param, conv_fn_params, conv_ident, conv_option_boxed_tstype,
         conv_option_entity_name, conv_option_import_call_options, conv_option_true_plus_minus,
         conv_option_tstypeann, conv_option_type_param_decl, conv_span, conv_str, conv_ts_lit,
         conv_ts_this_type_or_ident, conv_ts_type_elements, conv_ts_type_operator_op,
@@ -20,54 +20,52 @@ use crate::{
 };
 
 #[pyclass]
-pub struct PyTsTypeAnn{
+pub struct PyTsTypeAnn {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub type_ann: Py<PyTsType>
+    pub type_ann: Py<PyTsType>,
 }
 
 #[pyclass(subclass)]
-pub struct PyTsType{
-
-}
+pub struct PyTsType {}
 
 #[pyclass]
-pub struct PyTsQualifiedName{
+pub struct PyTsQualifiedName {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub left: Py<PyTsEntityName>,
     #[pyo3(get)]
-    pub right: PyIdentName
+    pub right: PyIdentName,
 }
 
 #[pyclass]
-pub struct PyTsEntityName{
+pub struct PyTsEntityName {
     #[pyo3(get)]
     pub ident: Option<PyIdent>,
     #[pyo3(get)]
-    pub qualified_name: Option<Py<PyTsQualifiedName>>
+    pub qualified_name: Option<Py<PyTsQualifiedName>>,
 }
 
 #[pyclass]
-pub struct PyTsTypeParamInstantiation{
+pub struct PyTsTypeParamInstantiation {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub params: Vec<Py<PyTsType>>
+    pub params: Vec<Py<PyTsType>>,
 }
 
 #[pyclass]
-pub struct PyTsTypeParamDecl{
+pub struct PyTsTypeParamDecl {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub params: Vec<Py<PyTsTypeParam>>
+    pub params: Vec<Py<PyTsTypeParam>>,
 }
 
 #[pyclass]
-pub struct PyTsTypeParam{
+pub struct PyTsTypeParam {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
@@ -81,29 +79,29 @@ pub struct PyTsTypeParam{
     #[pyo3(get)]
     pub constraint: Option<Py<PyTsType>>,
     #[pyo3(get)]
-    pub default: Option<Py<PyTsType>>
+    pub default: Option<Py<PyTsType>>,
 }
 
 #[pyclass]
-pub struct PyTsImportCallOptions{
+pub struct PyTsImportCallOptions {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
-    pub with: Py<PyExpr>
+    pub with: Py<PyExpr>,
 }
 
 #[pyclass]
-pub struct PyTsTupleElement{
+pub struct PyTsTupleElement {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub label: Option<Py<PyPat>>,
     #[pyo3(get)]
-    pub ty: Py<PyTsType>
+    pub ty: Py<PyTsType>,
 }
 
 #[pyclass]
-pub struct PyTplElement{
+pub struct PyTplElement {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
@@ -111,7 +109,7 @@ pub struct PyTplElement{
     #[pyo3(get)]
     pub cooked: Option<String>,
     #[pyo3(get)]
-    pub raw: String
+    pub raw: String,
 }
 
 ast_node_variant!(PyTsType, PyTsKeywordType, TsKeywordType, {
@@ -145,31 +143,33 @@ ast_node_variant!(PyTsType, PyTsConstructorType, TsConstructorType, {
 });
 
 #[pyclass(subclass)]
-pub struct PyTsTypeQueryExpr{
-
-}
+pub struct PyTsTypeQueryExpr {}
 
 #[pyclass(extends=PyTsTypeQueryExpr)]
-pub struct PyTsTypeQueryExprEntityName{
+pub struct PyTsTypeQueryExprEntityName {
     #[pyo3(get)]
-    pub entity_name: Py<PyTsEntityName>
+    pub entity_name: Py<PyTsEntityName>,
 }
 
 impl PyTsTypeQueryExprEntityName {
     pub fn build(py: Python<'_>, name: TsEntityName) -> PyResult<Self> {
-        Ok(PyTsTypeQueryExprEntityName { entity_name: conv_tsentityname(py, name)? })
+        Ok(PyTsTypeQueryExprEntityName {
+            entity_name: conv_tsentityname(py, name)?,
+        })
     }
 }
 
 #[pyclass(extends=PyTsTypeQueryExpr)]
-pub struct PyTsTypeQueryExprImport{
+pub struct PyTsTypeQueryExprImport {
     #[pyo3(get)]
-    pub import: Py<PyTsImportType>
+    pub import: Py<PyTsImportType>,
 }
 
 impl PyTsTypeQueryExprImport {
     pub fn build(py: Python<'_>, node: TsImportType) -> PyResult<Self> {
-        Ok(PyTsTypeQueryExprImport { import: crate::conversions::conv_ts_import_type(py, node)? })
+        Ok(PyTsTypeQueryExprImport {
+            import: crate::conversions::conv_ts_import_type(py, node)?,
+        })
     }
 }
 
@@ -188,9 +188,7 @@ ast_node_variant!(PyTsType, PyTsImportType, TsImportType, {
 });
 
 #[pyclass(subclass)]
-pub struct PyTsTypeElement{
-
-}
+pub struct PyTsTypeElement {}
 
 ast_node_variant!(PyTsTypeElement, PyTsCallSignatureDecl, TsCallSignatureDecl, {
     span: PySpan = conv_span,
@@ -323,9 +321,7 @@ ast_node_variant!(PyTsType, PyTsMappedType, TsMappedType, {
 });
 
 #[pyclass(subclass)]
-pub struct PyTsLit{
-
-}
+pub struct PyTsLit {}
 
 ast_node_variant!(PyTsLit, PyTsLitNumber, Number, {
     span: PySpan = conv_span,
@@ -359,31 +355,33 @@ ast_node_variant!(PyTsType, PyTsLitType, TsLitType, {
 });
 
 #[pyclass(subclass)]
-pub struct PyTsThisTypeOrIdent{
-
-}
+pub struct PyTsThisTypeOrIdent {}
 
 #[pyclass(extends=PyTsThisTypeOrIdent)]
-pub struct PyTsThisTypeOrIdentThis{
+pub struct PyTsThisTypeOrIdentThis {
     #[pyo3(get)]
-    pub span: PySpan
+    pub span: PySpan,
 }
 
 impl PyTsThisTypeOrIdentThis {
     pub fn build(py: Python<'_>, node: TsThisType) -> PyResult<Self> {
-        Ok(PyTsThisTypeOrIdentThis { span: conv_span(py, node.span)? })
+        Ok(PyTsThisTypeOrIdentThis {
+            span: conv_span(py, node.span)?,
+        })
     }
 }
 
 #[pyclass(extends=PyTsThisTypeOrIdent)]
-pub struct PyTsThisTypeOrIdentIdent{
+pub struct PyTsThisTypeOrIdentIdent {
     #[pyo3(get)]
-    pub ident: PyIdent
+    pub ident: PyIdent,
 }
 
 impl PyTsThisTypeOrIdentIdent {
     pub fn build(py: Python<'_>, node: Ident) -> PyResult<Self> {
-        Ok(PyTsThisTypeOrIdentIdent { ident: conv_ident(py, node)? })
+        Ok(PyTsThisTypeOrIdentIdent {
+            ident: conv_ident(py, node)?,
+        })
     }
 }
 
@@ -399,11 +397,11 @@ pub fn tstype_to_py(py: Python<'_>, ts_type: TsType) -> PyResult<Py<PyTsType>> {
 }
 
 #[pyclass]
-pub struct PyTsExprWithTypeArgs{
+pub struct PyTsExprWithTypeArgs {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub expr: Py<crate::pyexpr::PyExpr>,
     #[pyo3(get)]
-    pub type_args: Option<Py<PyTsTypeParamInstantiation>>
+    pub type_args: Option<Py<PyTsTypeParamInstantiation>>,
 }

@@ -2,26 +2,26 @@ use pyo3::prelude::*;
 use swc_core::common::{Span, SyntaxContext};
 use swc_core::ecma::ast::*;
 
+use crate::conversions::*;
 use crate::macros::ast_node_variant;
 use crate::pyexpr::PyExpr;
 use crate::pyident::PyIdent;
 use crate::pypat::PyPat;
 use crate::pyspan::PySpan;
-use crate::conversions::*;
 
 #[derive(Clone)]
 #[pyclass(subclass)]
-pub struct PyStmt{
-    pub stmt: Stmt
+pub struct PyStmt {
+    pub stmt: Stmt,
 }
 #[pyclass]
-pub struct PyCatchClause{
+pub struct PyCatchClause {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub param: Option<Py<PyPat>>,
     #[pyo3(get)]
-    pub body: Py<PyBlockStmt>
+    pub body: Py<PyBlockStmt>,
 }
 
 ast_node_variant!(PyStmt, PyBlockStmt, BlockStmt, {
@@ -85,13 +85,13 @@ ast_node_variant!(PyStmt, PyIfStmt, IfStmt, {
 });
 
 #[pyclass]
-pub struct PySwitchCase{
+pub struct PySwitchCase {
     #[pyo3(get)]
     pub span: PySpan,
     #[pyo3(get)]
     pub test: Option<Py<PyExpr>>,
     #[pyo3(get)]
-    pub cons: Vec<Py<PyStmt>>
+    pub cons: Vec<Py<PyStmt>>,
 }
 
 ast_node_variant!(PyStmt, PySwitchStmt, SwitchStmt, {
@@ -119,11 +119,11 @@ ast_node_variant!(PyStmt, PyDoWhileStmt, DoWhileStmt, {
 });
 
 #[pyclass]
-pub struct PyVarDeclOrExpr{
+pub struct PyVarDeclOrExpr {
     #[pyo3(get)]
     pub var_decl: Option<Py<crate::pydecl::PyVarDecl>>,
     #[pyo3(get)]
-    pub expr: Option<Py<PyExpr>>
+    pub expr: Option<Py<PyExpr>>,
 }
 
 ast_node_variant!(PyStmt, PyForStmt, ForStmt, {
@@ -135,13 +135,13 @@ ast_node_variant!(PyStmt, PyForStmt, ForStmt, {
 });
 
 #[pyclass]
-pub struct PyForHead{
+pub struct PyForHead {
     #[pyo3(get)]
     pub var_decl: Option<Py<crate::pydecl::PyVarDecl>>,
     #[pyo3(get)]
     pub using_decl: Option<Py<crate::pydecl::PyUsingDecl>>,
     #[pyo3(get)]
-    pub pat: Option<Py<PyPat>>
+    pub pat: Option<Py<PyPat>>,
 }
 
 ast_node_variant!(PyStmt, PyForInStmt, ForInStmt, {
@@ -160,38 +160,97 @@ ast_node_variant!(PyStmt, PyForOfStmt, ForOfStmt, {
 });
 
 #[pyclass(extends=PyStmt)]
-pub struct PyDeclStmt{
+pub struct PyDeclStmt {
     #[pyo3(get)]
-    pub decl: Py<crate::pydecl::PyDecl>
+    pub decl: Py<crate::pydecl::PyDecl>,
 }
 
 impl PyDeclStmt {
     pub fn build(py: Python<'_>, node: Decl) -> PyResult<Self> {
-        Ok(PyDeclStmt { decl: crate::pydecl::conv_decl(py, node)? })
+        Ok(PyDeclStmt {
+            decl: crate::pydecl::conv_decl(py, node)?,
+        })
     }
 }
 
 pub fn stmt_to_py(py: Python<'_>, stmt: Stmt) -> PyResult<Py<PyStmt>> {
     let base = PyStmt { stmt: stmt.clone() };
     Ok(match stmt {
-        Stmt::Block(s) => Py::new(py, (PyBlockStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Empty(s) => Py::new(py,(PyEmptyStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Debugger(s) => Py::new(py, (PyDebuggerStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::With(s) => Py::new(py, (PyWithStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Return(s) => Py::new(py, (PyReturnStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Labeled(s) => Py::new(py, (PyLabeledStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Break(s) => Py::new(py, (PyBreakStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Continue(s) => Py::new(py, (PyContinueStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::If(s) => Py::new(py, (PyIfStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Switch(s) => Py::new(py, (PySwitchStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Throw(s) => Py::new(py, (PyThrowStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Try(s) => Py::new(py, (PyTryStmt::build(py, *s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::While(s) => Py::new(py, (PyWhileStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::DoWhile(s) => Py::new(py, (PyDoWhileStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::For(s) => Py::new(py, (PyForStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::ForIn(s) => Py::new(py, (PyForInStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::ForOf(s) => Py::new(py, (PyForOfStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Decl(s) => Py::new(py, (PyDeclStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
-        Stmt::Expr(s) => Py::new(py, (PyExprStmt::build(py, s)?, base))?.into_bound(py).into_super().unbind(),
+        Stmt::Block(s) => Py::new(py, (PyBlockStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Empty(s) => Py::new(py, (PyEmptyStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Debugger(s) => Py::new(py, (PyDebuggerStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::With(s) => Py::new(py, (PyWithStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Return(s) => Py::new(py, (PyReturnStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Labeled(s) => Py::new(py, (PyLabeledStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Break(s) => Py::new(py, (PyBreakStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Continue(s) => Py::new(py, (PyContinueStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::If(s) => Py::new(py, (PyIfStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Switch(s) => Py::new(py, (PySwitchStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Throw(s) => Py::new(py, (PyThrowStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Try(s) => Py::new(py, (PyTryStmt::build(py, *s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::While(s) => Py::new(py, (PyWhileStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::DoWhile(s) => Py::new(py, (PyDoWhileStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::For(s) => Py::new(py, (PyForStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::ForIn(s) => Py::new(py, (PyForInStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::ForOf(s) => Py::new(py, (PyForOfStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Decl(s) => Py::new(py, (PyDeclStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        Stmt::Expr(s) => Py::new(py, (PyExprStmt::build(py, s)?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
     })
 }
