@@ -1,92 +1,815 @@
 use pyo3::prelude::*;
 
+use std::sync::Arc;
+
 use swc_core::common::Span;
 use swc_core::ecma::ast::{
-    ArrayLit, AssignExpr, AssignTarget, AssignTargetPat, AwaitExpr, BinExpr, BindingIdent,
-    CallExpr, ClassExpr, CondExpr, Expr, ExprOrSpread, FnExpr, Invalid, Lit, MemberExpr,
-    MetaPropExpr, NewExpr, ObjectLit, OptCall, OptChainExpr, ParenExpr, Pat, PrivateName, SeqExpr,
-    SimpleAssignTarget, SuperPropExpr, TaggedTpl, ThisExpr, Tpl, TsAsExpr, TsConstAssertion,
-    TsInstantiation, TsNonNullExpr, TsSatisfiesExpr, TsTypeAssertion, UnaryExpr, UpdateExpr,
-    YieldExpr,
+    AssignTarget, AssignTargetPat, BindingIdent, Callee, Expr, Invalid, Lit, MemberExpr,
+    MemberProp, MetaPropExpr, OptCall, OptChainExpr, ParenExpr, Pat, PrivateName,
+    SimpleAssignTarget, SuperPropExpr, ThisExpr, Tpl, TsAsExpr, TsInstantiation, TsNonNullExpr,
+    TsSatisfiesExpr, TsType, TsTypeAssertion,
 };
 
 use crate::conversions::{
-    conv_binary_op, conv_bindingident, conv_bool, conv_boxed_class, conv_boxed_expr,
-    conv_boxed_function, conv_boxed_opt_chain_base, conv_boxed_tstype,
-    conv_boxed_type_param_instantiation, conv_callee, conv_ctxt, conv_elems, conv_elems_noopt,
-    conv_expr, conv_function, conv_ident, conv_member_prop, conv_meta_prop_kind,
-    conv_option_boxed_expr, conv_option_function_body, conv_option_ident,
-    conv_option_type_param_decl, conv_pat, conv_pats, conv_prop_or_spreads, conv_span, conv_super,
-    conv_super_prop, conv_tpl_elements, conv_typeparams, conv_unary_op, conv_update_op,
+    conv_assign_op, conv_binary_op, conv_bindingident, conv_bool, conv_boxed_opt_chain_base,
+    conv_boxed_tstype, conv_callee, conv_ctxt, conv_ident,
+    conv_member_prop, conv_meta_prop_kind, conv_option_ident,
+    conv_pat, conv_span, conv_super, conv_super_prop, conv_tpl_elements, conv_typeparams,
+    conv_unary_op, conv_update_op,
 };
-use crate::macros::ast_node_variant;
+use crate::macros::{ast_node_variant, arc_variant_node};
 use crate::pyclass::PyClass;
+use crate::pyenums::{PyAssignOp, PyBinaryOp, PyMetaPropKind, PyUnaryOp, PyUpdateOp};
 use crate::pyfunction::{PyCallee, PyFunction, PyFunctionBody};
+use crate::pypat::{PatData, lower_pat};
+use crate::pytypeinfo::lower_tstypeann;
 use crate::pyident::PyIdent;
 use crate::pyident::{PyBindingIdent, PyPrivateName};
+use crate::pyjsx::{
+    PyJSXElement, PyJSXEmptyExpr, PyJSXFragment, PyJSXMemberExpr, PyJSXNamespacedName,
+};
 use crate::pylit::PyLit;
 use crate::pypat::PyPat;
 use crate::pyprop::{PyMemberProp, PyPropOrSpread, PySuperProp};
 use crate::pyspan::PySpan;
-use crate::pytypeinfo::{PyTplElement, PyTsType, PyTsTypeParamDecl, PyTsTypeParamInstantiation};
+use crate::pytypeinfo::{
+    PyTplElement, PyTsType, PyTsTypeParamDecl, PyTsTypeParamInstantiation, TsTypeParamDeclData,
+    TsTypeParamInstantiationData, conv_arc_ts_type_param_instantiation,
+    conv_option_arc_ts_type_param_decl, conv_option_arc_ts_type_param_instantiation,
+    lower_ts_type_param_decl, lower_ts_type_param_instantiation,
+};
 
-#[derive(Clone)]
 #[pyclass(subclass)]
-pub struct PyExpr {
-    pub expr: Expr,
+pub struct PyExpr {}
+
+pub enum ExprData {
+    This(ThisExpr),
+    Array(ArrayLitData),
+    Object(Arc<ObjectLitData>),
+    Fn(Arc<FnExprData>),
+    Unary(UnaryExprData),
+    Update(UpdateExprData),
+    Bin(BinExprData),
+    Assign(AssignExprData),
+    Member(MemberExprData),
+    SuperProp(SuperPropExpr),
+    Cond(CondExprData),
+    Call(CallExprData),
+    New(NewExprData),
+    Seq(SeqExprData),
+    Ident(swc_core::ecma::ast::Ident),
+    Lit(Lit),
+    Tpl(Arc<TplData>),
+    TaggedTpl(TaggedTplData),
+    Arrow(Arc<ArrowExprData>),
+    Class(Arc<ClassExprData>),
+    Yield(YieldExprData),
+    MetaProp(MetaPropExpr),
+    Await(AwaitExprData),
+    Paren(ParenExprData),
+    JSXMember(swc_core::ecma::ast::JSXMemberExpr),
+    JSXNamespacedName(swc_core::ecma::ast::JSXNamespacedName),
+    JSXEmpty(swc_core::ecma::ast::JSXEmptyExpr),
+    JSXElement(Arc<crate::pyjsx::JSXElementData>),
+    JSXFragment(Arc<crate::pyjsx::JSXFragmentData>),
+    TsTypeAssertion(TsTypeAssertionData),
+    TsConstAssertion(TsConstAssertionData),
+    TsNonNull(TsNonNullExprData),
+    TsAs(TsAsExprData),
+    TsInstantiation(TsInstantiationData),
+    TsSatisfies(TsSatisfiesExprData),
+    PrivateName(PrivateName),
+    OptChain(OptChainExpr),
+    Invalid(Invalid),
 }
+
+pub struct ArrayLitData {
+    pub span: Span,
+    pub elems: Vec<Option<Arc<ExprData>>>,
+}
+
+pub struct UnaryExprData {
+    pub span: Span,
+    pub op: swc_core::ecma::ast::UnaryOp,
+    pub arg: Arc<ExprData>,
+}
+
+pub struct UpdateExprData {
+    pub span: Span,
+    pub op: swc_core::ecma::ast::UpdateOp,
+    pub prefix: bool,
+    pub arg: Arc<ExprData>,
+}
+
+pub struct BinExprData {
+    pub span: Span,
+    pub op: swc_core::ecma::ast::BinaryOp,
+    pub left: Arc<ExprData>,
+    pub right: Arc<ExprData>,
+}
+
+pub struct AssignExprData {
+    pub span: Span,
+    pub op: swc_core::ecma::ast::AssignOp,
+    pub left: AssignTarget,
+    pub right: Arc<ExprData>,
+}
+
+pub struct MemberExprData {
+    pub span: Span,
+    pub obj: Arc<ExprData>,
+    pub prop: MemberProp,
+}
+
+pub struct CondExprData {
+    pub span: Span,
+    pub test: Arc<ExprData>,
+    pub cons: Arc<ExprData>,
+    pub alt: Arc<ExprData>,
+}
+
+pub struct CallExprData {
+    pub span: Span,
+    pub ctxt: swc_core::common::SyntaxContext,
+    pub callee: Callee,
+    pub args: Vec<Arc<ExprData>>,
+    pub type_args: Option<Arc<TsTypeParamInstantiationData>>,
+}
+
+pub struct NewExprData {
+    pub span: Span,
+    pub ctxt: swc_core::common::SyntaxContext,
+    pub callee: Arc<ExprData>,
+    pub args: Option<Vec<crate::pyprop::ExprOrSpreadData>>,
+    pub type_args: Option<Arc<TsTypeParamInstantiationData>>,
+}
+
+pub struct SeqExprData {
+    pub span: Span,
+    pub exprs: Vec<Arc<ExprData>>,
+}
+
+pub struct TplData {
+    pub span: Span,
+    pub exprs: Vec<Arc<ExprData>>,
+    pub quasis: Vec<swc_core::ecma::ast::TplElement>,
+}
+
+pub struct TaggedTplData {
+    pub span: Span,
+    pub ctxt: swc_core::common::SyntaxContext,
+    pub tag: Arc<ExprData>,
+    pub type_params: Option<Arc<TsTypeParamInstantiationData>>,
+    pub tpl: Arc<TplData>,
+}
+
+pub struct YieldExprData {
+    pub span: Span,
+    pub arg: Option<Arc<ExprData>>,
+    pub delegate: bool,
+}
+
+pub struct AwaitExprData {
+    pub span: Span,
+    pub arg: Arc<ExprData>,
+}
+
+pub struct ParenExprData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+}
+
+pub struct TsTypeAssertionData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+    pub type_ann: Box<TsType>,
+}
+
+pub struct TsConstAssertionData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+}
+
+pub struct TsNonNullExprData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+}
+
+pub struct TsAsExprData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+    pub type_ann: Box<TsType>,
+}
+
+pub struct TsInstantiationData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+    pub type_args: Arc<TsTypeParamInstantiationData>,
+}
+
+pub struct TsSatisfiesExprData {
+    pub span: Span,
+    pub expr: Arc<ExprData>,
+    pub type_ann: Box<TsType>,
+}
+
+pub fn lower_expr(expr: Expr) -> ExprData {
+    match expr {
+        Expr::This(e) => ExprData::This(e),
+        Expr::Array(e) => ExprData::Array(ArrayLitData {
+            span: e.span,
+            elems: e
+                .elems
+                .into_iter()
+                .map(|opt| opt.map(|eos| Arc::new(lower_expr(*eos.expr))))
+                .collect(),
+        }),
+        Expr::Object(e) => ExprData::Object(Arc::new(ObjectLitData {
+            span: e.span,
+            props: e
+                .props
+                .into_iter()
+                .map(|p| Arc::new(crate::pyprop::lower_prop_or_spread(p)))
+                .collect(),
+        })),
+        Expr::Fn(e) => ExprData::Fn(Arc::new(FnExprData {
+            ident: e.ident,
+            function: Arc::new(crate::pyfunction::lower_function(*e.function)),
+        })),
+        Expr::Unary(e) => ExprData::Unary(UnaryExprData {
+            span: e.span,
+            op: e.op,
+            arg: Arc::new(lower_expr(*e.arg)),
+        }),
+        Expr::Update(e) => ExprData::Update(UpdateExprData {
+            span: e.span,
+            op: e.op,
+            prefix: e.prefix,
+            arg: Arc::new(lower_expr(*e.arg)),
+        }),
+        Expr::Bin(e) => ExprData::Bin(BinExprData {
+            span: e.span,
+            op: e.op,
+            left: Arc::new(lower_expr(*e.left)),
+            right: Arc::new(lower_expr(*e.right)),
+        }),
+        Expr::Assign(e) => ExprData::Assign(AssignExprData {
+            span: e.span,
+            op: e.op,
+            left: e.left,
+            right: Arc::new(lower_expr(*e.right)),
+        }),
+        Expr::Member(e) => ExprData::Member(MemberExprData {
+            span: e.span,
+            obj: Arc::new(lower_expr(*e.obj)),
+            prop: e.prop,
+        }),
+        Expr::SuperProp(e) => ExprData::SuperProp(e),
+        Expr::Cond(e) => ExprData::Cond(CondExprData {
+            span: e.span,
+            test: Arc::new(lower_expr(*e.test)),
+            cons: Arc::new(lower_expr(*e.cons)),
+            alt: Arc::new(lower_expr(*e.alt)),
+        }),
+        Expr::Call(e) => ExprData::Call(CallExprData {
+            span: e.span,
+            ctxt: e.ctxt,
+            callee: e.callee,
+            args: e
+                .args
+                .into_iter()
+                .map(|eos| Arc::new(lower_expr(*eos.expr)))
+                .collect(),
+            type_args: e.type_args.map(|tp| Arc::new(lower_ts_type_param_instantiation(*tp))),
+        }),
+        Expr::New(e) => ExprData::New(NewExprData {
+            span: e.span,
+            ctxt: e.ctxt,
+            callee: Arc::new(lower_expr(*e.callee)),
+            args: e.args.map(|args| {
+                args.into_iter().map(crate::pyprop::lower_expr_or_spread).collect()
+            }),
+            type_args: e.type_args.map(|tp| Arc::new(lower_ts_type_param_instantiation(*tp))),
+        }),
+        Expr::Seq(e) => ExprData::Seq(SeqExprData {
+            span: e.span,
+            exprs: e.exprs.into_iter().map(|x| Arc::new(lower_expr(*x))).collect(),
+        }),
+        Expr::Ident(e) => ExprData::Ident(e),
+        Expr::Lit(e) => ExprData::Lit(e),
+        Expr::Tpl(e) => ExprData::Tpl(Arc::new(lower_tpl(e))),
+        Expr::TaggedTpl(e) => ExprData::TaggedTpl(TaggedTplData {
+            span: e.span,
+            ctxt: e.ctxt,
+            tag: Arc::new(lower_expr(*e.tag)),
+            type_params: e.type_params.map(|tp| Arc::new(lower_ts_type_param_instantiation(*tp))),
+            tpl: Arc::new(lower_tpl(*e.tpl)),
+        }),
+        Expr::Arrow(e) => ExprData::Arrow(Arc::new(ArrowExprData {
+            span: e.span,
+            ctxt: e.ctxt,
+            params: e.params.into_iter().map(|p| Arc::new(lower_pat(p))).collect(),
+            body: lower_arrow_function_body(*e.body),
+            is_async: e.is_async,
+            is_generator: e.is_generator,
+            type_params: e.type_params.map(|tp| Arc::new(lower_ts_type_param_decl(*tp))),
+            return_type: e.return_type.map(|r| Arc::new(lower_tstypeann(*r))),
+        })),
+        Expr::Class(e) => ExprData::Class(Arc::new(ClassExprData {
+            ident: e.ident,
+            class: Arc::new(crate::pyclass::lower_class(*e.class)),
+        })),
+        Expr::Yield(e) => ExprData::Yield(YieldExprData {
+            span: e.span,
+            arg: e.arg.map(|a| Arc::new(lower_expr(*a))),
+            delegate: e.delegate,
+        }),
+        Expr::MetaProp(e) => ExprData::MetaProp(e),
+        Expr::Await(e) => ExprData::Await(AwaitExprData {
+            span: e.span,
+            arg: Arc::new(lower_expr(*e.arg)),
+        }),
+        Expr::Paren(e) => ExprData::Paren(ParenExprData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+        }),
+        Expr::JSXMember(e) => ExprData::JSXMember(e),
+        Expr::JSXNamespacedName(e) => ExprData::JSXNamespacedName(e),
+        Expr::JSXEmpty(e) => ExprData::JSXEmpty(e),
+        Expr::JSXElement(e) => {
+            ExprData::JSXElement(Arc::new(crate::pyjsx::lower_jsx_element(*e)))
+        }
+        Expr::JSXFragment(e) => {
+            ExprData::JSXFragment(Arc::new(crate::pyjsx::lower_jsx_fragment(e)))
+        }
+        Expr::TsTypeAssertion(e) => ExprData::TsTypeAssertion(TsTypeAssertionData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+            type_ann: e.type_ann,
+        }),
+        Expr::TsConstAssertion(e) => ExprData::TsConstAssertion(TsConstAssertionData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+        }),
+        Expr::TsNonNull(e) => ExprData::TsNonNull(TsNonNullExprData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+        }),
+        Expr::TsAs(e) => ExprData::TsAs(TsAsExprData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+            type_ann: e.type_ann,
+        }),
+        Expr::TsInstantiation(e) => ExprData::TsInstantiation(TsInstantiationData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+            type_args: Arc::new(lower_ts_type_param_instantiation(*e.type_args)),
+        }),
+        Expr::TsSatisfies(e) => ExprData::TsSatisfies(TsSatisfiesExprData {
+            span: e.span,
+            expr: Arc::new(lower_expr(*e.expr)),
+            type_ann: e.type_ann,
+        }),
+        Expr::PrivateName(e) => ExprData::PrivateName(e),
+        Expr::OptChain(e) => ExprData::OptChain(e),
+        Expr::Invalid(e) => ExprData::Invalid(e),
+    }
+}
+
+pub fn lower_tpl(tpl: Tpl) -> TplData {
+    TplData {
+        span: tpl.span,
+        exprs: tpl.exprs.into_iter().map(|x| Arc::new(lower_expr(*x))).collect(),
+        quasis: tpl.quasis,
+    }
+}
+
+pub fn wrap_expr_data(py: Python<'_>, data: Arc<ExprData>) -> PyResult<Py<PyExpr>> {
+    let base = PyExpr {};
+    Ok(match &*data {
+        ExprData::This(e) => Py::new(py, (PyThisExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Array(_) => Py::new(py, (PyArrayLitExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Object(_) => Py::new(py, (PyObjectLit::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Fn(_) => Py::new(py, (PyFnExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Unary(_) => Py::new(py, (PyUnaryExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Update(_) => Py::new(py, (PyUpdateExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Bin(_) => Py::new(py, (PyBinExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Assign(_) => Py::new(py, (PyAssignExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Member(_) => Py::new(py, (PyMemberExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::SuperProp(e) => Py::new(py, (PySuperPropExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Cond(_) => Py::new(py, (PyCondExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Call(_) => Py::new(py, (PyCallExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::New(_) => Py::new(py, (PyNewExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Seq(_) => Py::new(py, (PySeqExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Ident(e) => Py::new(py, (PyIdentExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Lit(e) => Py::new(py, (PyLitExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Tpl(tpl_data) => Py::new(py, (PyTpl::from_arc(Arc::clone(tpl_data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::TaggedTpl(_) => Py::new(py, (PyTaggedTpl::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Arrow(_) => Py::new(py, (PyArrowExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Class(e) => Py::new(py, (PyClassExpr::from_arc(Arc::clone(e)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Yield(_) => Py::new(py, (PyYieldExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::MetaProp(e) => Py::new(py, (PyMetaPropExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Await(_) => Py::new(py, (PyAwaitExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Paren(_) => Py::new(py, (PyParenExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::JSXMember(e) => Py::new(py, (PyJSXMemberExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::JSXNamespacedName(e) => {
+            Py::new(py, (PyJSXNamespacedName::build(py, e.clone())?, base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        ExprData::JSXEmpty(e) => Py::new(py, (PyJSXEmptyExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::JSXElement(e) => Py::new(py, (PyJSXElement::from_arc(Arc::clone(e)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::JSXFragment(e) => Py::new(py, (PyJSXFragment::from_arc(Arc::clone(e)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::TsTypeAssertion(_) => {
+            Py::new(py, (PyTsTypeAssertion::from_arc(Arc::clone(&data)), base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        ExprData::TsConstAssertion(_) => {
+            Py::new(py, (PyTsConstAssertion::from_arc(Arc::clone(&data)), base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        ExprData::TsNonNull(_) => Py::new(py, (PyTsNonNullExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::TsAs(_) => Py::new(py, (PyTsAsExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::TsInstantiation(_) => {
+            Py::new(py, (PyTsInstantiation::from_arc(Arc::clone(&data)), base))?
+                .into_bound(py)
+                .into_super()
+                .unbind()
+        }
+        ExprData::TsSatisfies(_) => Py::new(py, (PyTsSatisfiesExpr::from_arc(Arc::clone(&data)), base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::PrivateName(e) => Py::new(py, (PyPrivateNameExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::OptChain(e) => Py::new(py, (PyOptChainExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+        ExprData::Invalid(e) => Py::new(py, (PyInvalidExpr::build(py, e.clone())?, base))?
+            .into_bound(py)
+            .into_super()
+            .unbind(),
+    })
+}
+
+pub fn wrap_tpl(py: Python<'_>, data: Arc<TplData>) -> PyResult<Py<PyTpl>> {
+    Py::new(py, (PyTpl { inner: data }, PyExpr {}))
+}
+
+pub fn conv_arc_expr(py: Python<'_>, data: Arc<ExprData>) -> PyResult<Py<PyExpr>> {
+    wrap_expr_data(py, data)
+}
+
+pub fn conv_option_arc_expr(
+    py: Python<'_>,
+    data: Option<Arc<ExprData>>,
+) -> PyResult<Option<Py<PyExpr>>> {
+    data.map(|d| wrap_expr_data(py, d)).transpose()
+}
+
+pub fn conv_arc_exprs(py: Python<'_>, data: Vec<Arc<ExprData>>) -> PyResult<Vec<Py<PyExpr>>> {
+    data.into_iter().map(|d| wrap_expr_data(py, d)).collect()
+}
+
+pub fn conv_option_arc_expr_elems(
+    py: Python<'_>,
+    data: Vec<Option<Arc<ExprData>>>,
+) -> PyResult<Vec<Option<Py<PyExpr>>>> {
+    data.into_iter()
+        .map(|opt| opt.map(|d| wrap_expr_data(py, d)).transpose())
+        .collect()
+}
+
+pub fn conv_arc_tpl(py: Python<'_>, data: Arc<TplData>) -> PyResult<Py<PyTpl>> {
+    wrap_tpl(py, data)
+}
+
+arc_variant_node!(PyExpr, PyArrayLitExpr, ExprData, ExprData::Array, ArrayLitData, {
+    span: PySpan = conv_span,
+    elems: Vec<Option<Py<PyExpr>>> = conv_option_arc_expr_elems,
+});
+
+arc_variant_node!(PyExpr, PyUnaryExpr, ExprData, ExprData::Unary, UnaryExprData, {
+    span: PySpan = conv_span,
+    op: PyUnaryOp = conv_unary_op,
+    arg: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyUpdateExpr, ExprData, ExprData::Update, UpdateExprData, {
+    span: PySpan = conv_span,
+    op: PyUpdateOp = conv_update_op,
+    prefix: bool = conv_bool,
+    arg: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyBinExpr, ExprData, ExprData::Bin, BinExprData, {
+    span: PySpan = conv_span,
+    op: PyBinaryOp = conv_binary_op,
+    left: Py<PyExpr> = conv_arc_expr,
+    right: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyAssignExpr, ExprData, ExprData::Assign, AssignExprData, {
+    span: PySpan = conv_span,
+    op: PyAssignOp = conv_assign_op,
+    left: Py<PyAssignTarget> = conv_assign_target,
+    right: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyMemberExpr, ExprData, ExprData::Member, MemberExprData, {
+    span: PySpan = conv_span,
+    obj: Py<PyExpr> = conv_arc_expr,
+    prop: Py<PyMemberProp> = conv_member_prop,
+});
+
+arc_variant_node!(PyExpr, PyCondExpr, ExprData, ExprData::Cond, CondExprData, {
+    span: PySpan = conv_span,
+    test: Py<PyExpr> = conv_arc_expr,
+    cons: Py<PyExpr> = conv_arc_expr,
+    alt: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyCallExpr, ExprData, ExprData::Call, CallExprData, {
+    span: PySpan = conv_span,
+    ctxt: u32 = conv_ctxt,
+    callee: Py<PyCallee> = conv_callee,
+    args: Vec<Py<PyExpr>> = conv_arc_exprs,
+    type_args: Option<Py<PyTsTypeParamInstantiation>> = conv_option_arc_ts_type_param_instantiation,
+});
+
+arc_variant_node!(PyExpr, PyNewExpr, ExprData, ExprData::New, NewExprData, {
+    span: PySpan = conv_span,
+    ctxt: u32 = conv_ctxt,
+    callee: Py<PyExpr> = conv_arc_expr,
+    args: Option<Vec<Py<crate::pyprop::PyExprOrSpread>>> = crate::pyprop::conv_option_arc_expr_or_spreads,
+    type_args: Option<Py<PyTsTypeParamInstantiation>> = conv_option_arc_ts_type_param_instantiation,
+});
+
+arc_variant_node!(PyExpr, PySeqExpr, ExprData, ExprData::Seq, SeqExprData, {
+    span: PySpan = conv_span,
+    exprs: Vec<Py<PyExpr>> = conv_arc_exprs,
+});
+
+arc_variant_node!(PyExpr, PyYieldExpr, ExprData, ExprData::Yield, YieldExprData, {
+    span: PySpan = conv_span,
+    arg: Option<Py<PyExpr>> = conv_option_arc_expr,
+    delegate: bool = conv_bool,
+});
+
+arc_variant_node!(PyExpr, PyAwaitExpr, ExprData, ExprData::Await, AwaitExprData, {
+    span: PySpan = conv_span,
+    arg: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyParenExpr, ExprData, ExprData::Paren, ParenExprData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyTsTypeAssertion, ExprData, ExprData::TsTypeAssertion, TsTypeAssertionData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+    type_ann: Py<PyTsType> = conv_boxed_tstype,
+});
+
+arc_variant_node!(PyExpr, PyTsConstAssertion, ExprData, ExprData::TsConstAssertion, TsConstAssertionData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyTsNonNullExpr, ExprData, ExprData::TsNonNull, TsNonNullExprData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+});
+
+arc_variant_node!(PyExpr, PyTsAsExpr, ExprData, ExprData::TsAs, TsAsExprData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+    type_ann: Py<PyTsType> = conv_boxed_tstype,
+});
+
+arc_variant_node!(PyExpr, PyTsInstantiation, ExprData, ExprData::TsInstantiation, TsInstantiationData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+    type_args: Py<PyTsTypeParamInstantiation> = conv_arc_ts_type_param_instantiation,
+});
+
+arc_variant_node!(PyExpr, PyTsSatisfiesExpr, ExprData, ExprData::TsSatisfies, TsSatisfiesExprData, {
+    span: PySpan = conv_span,
+    expr: Py<PyExpr> = conv_arc_expr,
+    type_ann: Py<PyTsType> = conv_boxed_tstype,
+});
+
+#[pyclass(extends=PyExpr)]
+pub struct PyTpl {
+    inner: Arc<TplData>,
+}
+
+impl PyTpl {
+    pub fn from_arc(inner: Arc<TplData>) -> Self {
+        PyTpl { inner }
+    }
+}
+
+#[pymethods]
+impl PyTpl {
+    #[getter]
+    fn span(&self, py: Python<'_>) -> PyResult<PySpan> {
+        conv_span(py, self.inner.span)
+    }
+
+    #[getter]
+    fn exprs(&self, py: Python<'_>) -> PyResult<Vec<Py<PyExpr>>> {
+        conv_arc_exprs(py, self.inner.exprs.clone())
+    }
+
+    #[getter]
+    fn quasis(&self, py: Python<'_>) -> PyResult<Vec<Py<PyTplElement>>> {
+        conv_tpl_elements(py, self.inner.quasis.clone())
+    }
+}
+
+arc_variant_node!(PyExpr, PyTaggedTpl, ExprData, ExprData::TaggedTpl, TaggedTplData, {
+    span: PySpan = conv_span,
+    ctxt: u32 = conv_ctxt,
+    tag: Py<PyExpr> = conv_arc_expr,
+    type_params: Option<Py<PyTsTypeParamInstantiation>> = conv_option_arc_ts_type_param_instantiation,
+    tpl: Py<PyTpl> = conv_arc_tpl,
+});
 
 ast_node_variant!(PyExpr, PyThisExpr, ThisExpr, {
     span: PySpan = conv_span,
 });
 
-ast_node_variant!(PyExpr, PyArrayLitExpr, ArrayLit, {
-    span: PySpan = conv_span,
-    elems: Vec<Option<Py<PyExpr>>> = conv_elems,
-});
+pub struct ObjectLitData {
+    pub span: Span,
+    pub props: Vec<Arc<crate::pyprop::PropOrSpreadData>>,
+}
 
-ast_node_variant!(PyExpr, PyObjectLit, ObjectLit, {
-    span: PySpan = conv_span,
-    props: Vec<Py<PyPropOrSpread>> = conv_prop_or_spreads
-});
+pub struct FnExprData {
+    pub ident: Option<swc_core::ecma::ast::Ident>,
+    pub function: Arc<crate::pyfunction::FunctionData>,
+}
 
-ast_node_variant!(PyExpr, PyCallExpr, CallExpr, {
-    span: PySpan = conv_span,
-    ctxt: u32 = conv_ctxt,
-    callee: Py<PyCallee> = conv_callee,
-    args: Vec<Py<PyExpr>> = conv_elems_noopt,
-});
+#[pyclass(extends=PyExpr)]
+pub struct PyObjectLit {
+    inner: Arc<ExprData>,
+}
 
-ast_node_variant!(PyExpr, PyFnExpr, FnExpr, {
-    ident: Option<PyIdent> = conv_option_ident,
-    function: Py<PyFunction> = conv_boxed_function
-});
+impl PyObjectLit {
+    pub fn from_arc(inner: Arc<ExprData>) -> Self {
+        PyObjectLit { inner }
+    }
 
-ast_node_variant!(PyExpr, PyUnaryExpr, UnaryExpr, {
-    span: PySpan = conv_span,
-    op: u32 = conv_unary_op,
-    arg: Py<PyExpr> = conv_boxed_expr
-});
+    fn data(&self) -> &Arc<ObjectLitData> {
+        match &*self.inner {
+            ExprData::Object(d) => d,
+            _ => unreachable!("ExprData/PyObjectLit mismatch"),
+        }
+    }
+}
 
-ast_node_variant!(PyExpr, PyUpdateExpr, UpdateExpr, {
-    span: PySpan = conv_span,
-    op: u32 = conv_update_op,
-    prefix: bool = conv_bool,
-    arg: Py<PyExpr> = conv_boxed_expr
-});
+#[pymethods]
+impl PyObjectLit {
+    #[getter]
+    fn span(&self, py: Python<'_>) -> PyResult<PySpan> {
+        conv_span(py, self.data().span)
+    }
 
-ast_node_variant!(PyExpr, PyBinExpr, BinExpr, {
-    span: PySpan = conv_span,
-    op: u32 = conv_binary_op,
-    left: Py<PyExpr> = conv_boxed_expr,
-    right: Py<PyExpr> = conv_boxed_expr
-});
+    #[getter]
+    fn props(&self, py: Python<'_>) -> PyResult<Vec<Py<PyPropOrSpread>>> {
+        crate::pyprop::conv_arc_prop_or_spreads(py, self.data().props.clone())
+    }
+}
 
-ast_node_variant!(PyExpr, PyMemberExpr, MemberExpr, {
-    span: PySpan = conv_span,
-    obj: Py<PyExpr> = conv_boxed_expr,
-    prop: Py<PyMemberProp> = conv_member_prop
-});
+#[pyclass(extends=PyExpr)]
+pub struct PyFnExpr {
+    inner: Arc<ExprData>,
+}
+
+impl PyFnExpr {
+    pub fn from_arc(inner: Arc<ExprData>) -> Self {
+        PyFnExpr { inner }
+    }
+
+    fn data(&self) -> &Arc<FnExprData> {
+        match &*self.inner {
+            ExprData::Fn(d) => d,
+            _ => unreachable!("ExprData/PyFnExpr mismatch"),
+        }
+    }
+}
+
+#[pymethods]
+impl PyFnExpr {
+    #[getter]
+    fn ident(&self, py: Python<'_>) -> PyResult<Option<PyIdent>> {
+        conv_option_ident(py, self.data().ident.clone())
+    }
+
+    #[getter]
+    fn function(&self, py: Python<'_>) -> PyResult<Py<PyFunction>> {
+        crate::pyfunction::wrap_function_data(py, Arc::clone(&self.data().function))
+    }
+}
 
 #[derive(Clone)]
 #[pyclass]
@@ -101,11 +824,6 @@ ast_node_variant!(PyExpr, PySuperPropExpr, SuperPropExpr, {
     prop: Py<PySuperProp> = conv_super_prop
 });
 
-ast_node_variant!(PyExpr, PyParenExpr, ParenExpr, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr
-});
-
 #[pyclass(subclass)]
 pub struct PyOptChainBase {}
 
@@ -117,12 +835,9 @@ pub struct PyOptChainBaseMember {
 
 impl PyOptChainBaseMember {
     pub fn build(py: Python<'_>, node: MemberExpr) -> PyResult<Self> {
-        let base = PyExpr {
-            expr: Expr::Member(node.clone()),
-        };
-        let sub = PyMemberExpr::build(py, node)?;
+        let sub = PyMemberExpr::from_arc(Arc::new(lower_expr(Expr::Member(node))));
         Ok(PyOptChainBaseMember {
-            member: Py::new(py, (sub, base))?,
+            member: Py::new(py, (sub, PyExpr {}))?,
         })
     }
 }
@@ -130,8 +845,8 @@ impl PyOptChainBaseMember {
 ast_node_variant!(PyOptChainBase, PyOptCall, OptCall, {
     span: PySpan = conv_span,
     ctxt: u32 = conv_ctxt,
-    callee: Py<PyExpr> = conv_boxed_expr,
-    args: Vec<Py<PyExpr>> = conv_elems_noopt,
+    callee: Py<PyExpr> = crate::conversions::conv_boxed_expr,
+    args: Vec<Py<PyExpr>> = crate::conversions::conv_elems_noopt,
     type_args: Option<Py<PyTsTypeParamInstantiation>> = conv_typeparams
 });
 
@@ -141,37 +856,8 @@ ast_node_variant!(PyExpr, PyOptChainExpr, OptChainExpr, {
     base: Py<PyOptChainBase> = conv_boxed_opt_chain_base
 });
 
-ast_node_variant!(PyExpr, PyTsAsExpr, TsAsExpr, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr,
-    type_ann: Py<PyTsType> = conv_boxed_tstype
-});
-
-ast_node_variant!(PyExpr, PyTsSatisfiesExpr, TsSatisfiesExpr, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr,
-    type_ann: Py<PyTsType> = conv_boxed_tstype
-});
-
-ast_node_variant!(PyExpr, PyTsNonNullExpr, TsNonNullExpr, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr
-});
-
-ast_node_variant!(PyExpr, PyTsTypeAssertion, TsTypeAssertion, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr,
-    type_ann: Py<PyTsType> = conv_boxed_tstype
-});
-
-ast_node_variant!(PyExpr, PyTsInstantiation, TsInstantiation, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr,
-    type_args: Py<PyTsTypeParamInstantiation> = conv_boxed_type_param_instantiation
-});
-
 pub fn expr_to_py(py: Python<'_>, expr: Expr) -> PyResult<Py<PyExpr>> {
-    conv_expr(py, expr)
+    wrap_expr_data(py, Arc::new(lower_expr(expr)))
 }
 
 #[pyclass(subclass)]
@@ -201,12 +887,9 @@ macro_rules! simple_assign_target_expr_variant {
 
         impl $py_name {
             pub fn build(py: Python<'_>, node: $swc_ty) -> PyResult<Self> {
-                let base = PyExpr {
-                    expr: Expr::$expr_variant(node.clone()),
-                };
-                let sub = $py_expr_ty::build(py, node)?;
+                let sub = $py_expr_ty::from_arc(Arc::new(lower_expr(Expr::$expr_variant(node))));
                 Ok($py_name {
-                    $field: Py::new(py, (sub, base))?,
+                    $field: Py::new(py, (sub, PyExpr {}))?,
                 })
             }
         }
@@ -220,13 +903,20 @@ simple_assign_target_expr_variant!(
     MemberExpr,
     Member
 );
-simple_assign_target_expr_variant!(
-    PySimpleAssignTargetSuperProp,
-    super_prop,
-    PySuperPropExpr,
-    SuperPropExpr,
-    SuperProp
-);
+#[pyclass(extends=PySimpleAssignTarget)]
+pub struct PySimpleAssignTargetSuperProp {
+    #[pyo3(get)]
+    pub super_prop: Py<PySuperPropExpr>,
+}
+
+impl PySimpleAssignTargetSuperProp {
+    pub fn build(py: Python<'_>, node: SuperPropExpr) -> PyResult<Self> {
+        Ok(PySimpleAssignTargetSuperProp {
+            super_prop: Py::new(py, (PySuperPropExpr::build(py, node)?, PyExpr {}))?,
+        })
+    }
+}
+
 simple_assign_target_expr_variant!(
     PySimpleAssignTargetParen,
     paren,
@@ -234,13 +924,20 @@ simple_assign_target_expr_variant!(
     ParenExpr,
     Paren
 );
-simple_assign_target_expr_variant!(
-    PySimpleAssignTargetOptChain,
-    opt_chain,
-    PyOptChainExpr,
-    OptChainExpr,
-    OptChain
-);
+
+#[pyclass(extends=PySimpleAssignTarget)]
+pub struct PySimpleAssignTargetOptChain {
+    #[pyo3(get)]
+    pub opt_chain: Py<PyOptChainExpr>,
+}
+
+impl PySimpleAssignTargetOptChain {
+    pub fn build(py: Python<'_>, node: OptChainExpr) -> PyResult<Self> {
+        Ok(PySimpleAssignTargetOptChain {
+            opt_chain: Py::new(py, (PyOptChainExpr::build(py, node)?, PyExpr {}))?,
+        })
+    }
+}
 simple_assign_target_expr_variant!(PySimpleAssignTargetTsAs, ts_as, PyTsAsExpr, TsAsExpr, TsAs);
 simple_assign_target_expr_variant!(
     PySimpleAssignTargetTsSatisfies,
@@ -416,33 +1113,6 @@ pub fn assign_target_to_py(py: Python<'_>, target: AssignTarget) -> PyResult<Py<
     conv_assign_target(py, target)
 }
 
-ast_node_variant!(PyExpr, PyAssignExpr, AssignExpr, {
-    span: PySpan = conv_span,
-    op: u32 = crate::conversions::conv_assign_op,
-    left: Py<PyAssignTarget> = conv_assign_target,
-    right: Py<PyExpr> = conv_boxed_expr
-});
-
-ast_node_variant!(PyExpr, PyCondExpr, CondExpr, {
-    span: PySpan = conv_span,
-    test: Py<PyExpr> = conv_boxed_expr,
-    cons: Py<PyExpr> = conv_boxed_expr,
-    alt: Py<PyExpr> = conv_boxed_expr
-});
-
-ast_node_variant!(PyExpr, PyNewExpr, NewExpr, {
-    span: PySpan = conv_span,
-    ctxt: u32 = conv_ctxt,
-    callee: Py<PyExpr> = conv_boxed_expr,
-    args: Option<Vec<Py<crate::pyprop::PyExprOrSpread>>> = crate::conversions::conv_option_expr_or_spreads_noopt,
-    type_args: Option<Py<PyTsTypeParamInstantiation>> = conv_typeparams
-});
-
-ast_node_variant!(PyExpr, PySeqExpr, SeqExpr, {
-    span: PySpan = conv_span,
-    exprs: Vec<Py<PyExpr>> = crate::conversions::conv_boxed_exprs
-});
-
 #[pyclass(extends=PyExpr)]
 pub struct PyIdentExpr {
     #[pyo3(get)]
@@ -471,19 +1141,35 @@ impl PyLitExpr {
     }
 }
 
-ast_node_variant!(PyExpr, PyTpl, Tpl, {
-    span: PySpan = conv_span,
-    exprs: Vec<Py<PyExpr>> = crate::conversions::conv_boxed_exprs,
-    quasis: Vec<Py<PyTplElement>> = conv_tpl_elements
-});
+#[derive(Clone)]
+pub enum ArrowFunctionBodyData {
+    FunctionBody(Arc<crate::pyfunction::FunctionBodyData>),
+    Expr(Arc<ExprData>),
+}
 
-ast_node_variant!(PyExpr, PyTaggedTpl, TaggedTpl, {
-    span: PySpan = conv_span,
-    ctxt: u32 = conv_ctxt,
-    tag: Py<PyExpr> = conv_boxed_expr,
-    type_params: Option<Py<PyTsTypeParamInstantiation>> = conv_typeparams,
-    tpl: Py<PyTpl> = crate::conversions::conv_boxed_tpl
-});
+pub fn lower_arrow_function_body(
+    b: swc_core::ecma::ast::ArrowFunctionBody,
+) -> ArrowFunctionBodyData {
+    match b {
+        swc_core::ecma::ast::ArrowFunctionBody::FunctionBody(fb) => {
+            ArrowFunctionBodyData::FunctionBody(Arc::new(crate::pyfunction::lower_function_body(fb)))
+        }
+        swc_core::ecma::ast::ArrowFunctionBody::Expr(e) => {
+            ArrowFunctionBodyData::Expr(Arc::new(lower_expr(*e)))
+        }
+    }
+}
+
+pub struct ArrowExprData {
+    pub span: Span,
+    pub ctxt: swc_core::common::SyntaxContext,
+    pub params: Vec<Arc<PatData>>,
+    pub body: ArrowFunctionBodyData,
+    pub is_async: bool,
+    pub is_generator: bool,
+    pub type_params: Option<Arc<TsTypeParamDeclData>>,
+    pub return_type: Option<Arc<crate::pytypeinfo::TsTypeAnnData>>,
+}
 
 #[pyclass]
 pub struct PyArrowFunctionBody {
@@ -493,53 +1179,71 @@ pub struct PyArrowFunctionBody {
     pub expr: Option<Py<PyExpr>>,
 }
 
-ast_node_variant!(PyExpr, PyArrowExpr, swc_core::ecma::ast::ArrowExpr, {
-    span: PySpan = conv_span,
-    ctxt: u32 = conv_ctxt,
-    params: Vec<Py<PyPat>> = conv_pats,
-    body: Py<PyArrowFunctionBody> = crate::conversions::conv_boxed_arrow_function_body,
-    is_async: bool = conv_bool,
-    is_generator: bool = conv_bool,
-    type_params: Option<Py<PyTsTypeParamDecl>> = conv_option_type_param_decl,
-    return_type: Option<Py<crate::pytypeinfo::PyTsTypeAnn>> = crate::conversions::conv_option_tstypeann
-});
-
-#[pyclass(extends=PyExpr)]
-pub struct PyClassExpr {
-    #[pyo3(get)]
-    pub ident: Option<PyIdent>,
-    #[pyo3(get)]
-    pub class: Py<PyClass>,
-}
-
-impl PyClassExpr {
-    pub fn build(py: Python<'_>, node: ClassExpr) -> PyResult<Self> {
-        Ok(PyClassExpr {
-            ident: conv_option_ident(py, node.ident)?,
-            class: conv_boxed_class(py, node.class)?,
-        })
+pub fn wrap_arrow_function_body_data(
+    py: Python<'_>,
+    data: ArrowFunctionBodyData,
+) -> PyResult<Py<PyArrowFunctionBody>> {
+    match data {
+        ArrowFunctionBodyData::FunctionBody(fb) => Py::new(
+            py,
+            PyArrowFunctionBody {
+                function_body: Some(crate::pyfunction::wrap_function_body_data(py, fb)?),
+                expr: None,
+            },
+        ),
+        ArrowFunctionBodyData::Expr(e) => Py::new(
+            py,
+            PyArrowFunctionBody {
+                function_body: None,
+                expr: Some(conv_arc_expr(py, e)?),
+            },
+        ),
     }
 }
 
-ast_node_variant!(PyExpr, PyYieldExpr, YieldExpr, {
+arc_variant_node!(PyExpr, PyArrowExpr, ExprData, ExprData::Arrow, Arc<ArrowExprData>, {
     span: PySpan = conv_span,
-    arg: Option<Py<PyExpr>> = conv_option_boxed_expr,
-    delegate: bool = conv_bool
+    ctxt: u32 = conv_ctxt,
+    params: Vec<Py<PyPat>> = crate::pypat::conv_arc_pats,
+    body: Py<PyArrowFunctionBody> = wrap_arrow_function_body_data,
+    is_async: bool = conv_bool,
+    is_generator: bool = conv_bool,
+    type_params: Option<Py<PyTsTypeParamDecl>> = conv_option_arc_ts_type_param_decl,
+    return_type: Option<Py<crate::pytypeinfo::PyTsTypeAnn>> = crate::pytypeinfo::conv_option_arc_tstypeann,
 });
+
+pub struct ClassExprData {
+    pub ident: Option<swc_core::ecma::ast::Ident>,
+    pub class: Arc<crate::pyclass::ClassData>,
+}
+
+#[pyclass(extends=PyExpr)]
+pub struct PyClassExpr {
+    inner: Arc<ClassExprData>,
+}
+
+impl PyClassExpr {
+    pub fn from_arc(inner: Arc<ClassExprData>) -> Self {
+        PyClassExpr { inner }
+    }
+}
+
+#[pymethods]
+impl PyClassExpr {
+    #[getter]
+    fn ident(&self, py: Python<'_>) -> PyResult<Option<PyIdent>> {
+        conv_option_ident(py, self.inner.ident.clone())
+    }
+
+    #[getter]
+    fn class(&self, py: Python<'_>) -> PyResult<Py<PyClass>> {
+        crate::pyclass::wrap_class_data(py, Arc::clone(&self.inner.class))
+    }
+}
 
 ast_node_variant!(PyExpr, PyMetaPropExpr, MetaPropExpr, {
     span: PySpan = conv_span,
-    kind: u32 = conv_meta_prop_kind
-});
-
-ast_node_variant!(PyExpr, PyAwaitExpr, AwaitExpr, {
-    span: PySpan = conv_span,
-    arg: Py<PyExpr> = conv_boxed_expr
-});
-
-ast_node_variant!(PyExpr, PyTsConstAssertion, TsConstAssertion, {
-    span: PySpan = conv_span,
-    expr: Py<PyExpr> = conv_boxed_expr
+    kind: PyMetaPropKind = conv_meta_prop_kind
 });
 
 #[pyclass(extends=PyExpr)]

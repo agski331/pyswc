@@ -1,16 +1,17 @@
 use pyo3::prelude::*;
 use swc_core::ecma::ast::{
     ExportAll, ExportDecl, ExportDefaultDecl, ExportDefaultExpr, ImportDecl, NamedExport,
-    TsExportAssignment, TsNamespaceExportDecl,
+    TsExportAssignment, TsExternalModuleRef, TsNamespaceExportDecl,
 };
 
 use crate::{
     conversions::{
         conv_bool, conv_boxed_class, conv_boxed_expr, conv_boxed_function, conv_boxed_str,
-        conv_ident, conv_import_phase, conv_option_boxed_object_lit, conv_span,
+        conv_ident, conv_import_phase, conv_option_boxed_object_lit, conv_span, conv_str,
     },
-    macros::ast_node_variant,
+    macros::{ast_node_variant, lazy_leaf_node},
     pydecl::{PyDecl, conv_decl},
+    pyenums::PyImportPhase,
     pyexpr::PyExpr,
     pyfunction::PyFunction,
     pyident::PyIdent,
@@ -147,7 +148,7 @@ ast_node_variant!(PyModuleDecl, PyImportDecl, ImportDecl, {
     src: String = conv_boxed_str,
     type_only: bool = conv_bool,
     with: Option<Py<PyExpr>> = conv_option_boxed_object_lit,
-    phase: u32 = conv_import_phase
+    phase: PyImportPhase = conv_import_phase
 });
 
 ast_node_variant!(PyModuleDecl, PyExportDecl, ExportDecl, {
@@ -283,7 +284,10 @@ pub struct PyDefaultDeclTsInterface {
 impl PyDefaultDeclTsInterface {
     pub fn build(py: Python<'_>, node: swc_core::ecma::ast::TsInterfaceDecl) -> PyResult<Self> {
         let base = PyDecl {};
-        let sub = crate::pydecl::PyTsInterfaceDecl::build(py, node)?;
+        let data = std::sync::Arc::new(crate::pydecl::DeclData::TsInterface(
+            crate::pydecl::lower_ts_interface_decl(node),
+        ));
+        let sub = crate::pydecl::PyTsInterfaceDecl::from_arc(data);
         Ok(PyDefaultDeclTsInterface {
             interface: Py::new(py, (sub, base))?,
         })
@@ -322,13 +326,10 @@ ast_node_variant!(PyModuleDecl, PyExportDefaultDecl, ExportDefaultDecl, {
     decl: Py<PyDefaultDecl> = conv_default_decl
 });
 
-#[pyclass]
-pub struct PyTsExternalModuleRef {
-    #[pyo3(get)]
-    pub span: PySpan,
-    #[pyo3(get)]
-    pub expr: String,
-}
+lazy_leaf_node!(PyTsExternalModuleRef, TsExternalModuleRef, {
+    span: PySpan = conv_span,
+    expr: String = conv_str,
+});
 
 #[pyclass]
 pub struct PyTsModuleRef {

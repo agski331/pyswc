@@ -3,6 +3,7 @@ mod javascriptfile;
 mod macros;
 mod pyclass;
 mod pydecl;
+mod pyenums;
 mod pyexpr;
 mod pyfunction;
 mod pyident;
@@ -24,6 +25,19 @@ fn pyswc(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // pyspan.rs
     m.add_class::<pyspan::PySpan>()?;
+    // pyenums.rs
+    m.add_class::<pyenums::PyUnaryOp>()?;
+    m.add_class::<pyenums::PyAssignOp>()?;
+    m.add_class::<pyenums::PyUpdateOp>()?;
+    m.add_class::<pyenums::PyBinaryOp>()?;
+    m.add_class::<pyenums::PyTsKeywordTypeKind>()?;
+    m.add_class::<pyenums::PyTruePlusMinus>()?;
+    m.add_class::<pyenums::PyTsTypeOperatorOp>()?;
+    m.add_class::<pyenums::PyAccessibility>()?;
+    m.add_class::<pyenums::PyMethodKind>()?;
+    m.add_class::<pyenums::PyVarDeclKind>()?;
+    m.add_class::<pyenums::PyImportPhase>()?;
+    m.add_class::<pyenums::PyMetaPropKind>()?;
     // pyident.rs
     m.add_class::<pyident::PyBindingIdent>()?;
     m.add_class::<pyident::PyIdent>()?;
